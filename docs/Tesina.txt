@@ -1,0 +1,864 @@
+Introduzione.
+In questa tesina analizzeremo lo sviluppo di un software in grado di effettuare le operazioni di assemblaggio e disassemblaggio di codice per il microprocessore Z80 della Zilog.
+Realizzare tale tesina ha richiesto un duro lavoro di molti mesi: per analizzare il problema, realizzare un algoritmo e codificarlo. Il frutto del nostro lavoro è un programma di una grande utilità didattica e aperto a future evoluzioni.
+In questo lavoro utilizzeremo indifferentemente le diciture CPU, µP, Z80 per indicare il microprocessore Z80 della Zilog. Utilizzeremo il termine Assembly per indicare il linguaggio assemblativo e il termine LM per indicare il linguaggio macchina del µP. E' molto diffusa una dizione errata che tende a chiamare il linguaggio assemblativo col termine Assembler, e il programma che effettua la traduzione da linguaggio assembly a LM con il termine assemblatore; ma chiaramente è una dizione errata. Infine utilizzeremo indifferentemente i termini ASM/assembler/assemblatore, e DSM/disassembler/disassemblatore per indicare le diverse operazioni di conversione.
+E' stato scelto come linguaggio per la codifica di tale simulatore il linguaggio Pascal, nel suo dialetto Turbo-Pascal. Questa scelta è motivata dal fatto che il nostro lavoro ha uno scopo didattico. Ed il Pascal è certamente uno dei migliori linguaggi in tale settore.
+Logica di programmazione.
+La programmazione di un programma complesso come un assemblatore o un  disasseblatore, in cui vi siano più persone a lavorare sullo stesso progetto ma a routines differenti può generare un certo numero di problemi. Infatti capita molto spesso che nella progettazione di una routine si debba chiamare, per un'operazione di servizio, una routine realizzata da una altro programmatore. Se non si standardizza la tecnica di progettazione delle routines si rishia il caos: l'anarchia.
+Quindi il progetto richiede l'utilizzo di una teoria di base in modo da evitare il più possibile conflitti di programmazione.
+Abbiamo utilizzato quindi la tecnica delle scatole nere. Per tecnica delle scatole nere (black boxes) intendiamo una tecnica di progettazione delle routines. Queste andranno progettate in modo che i dati che la routine dovrà elaborare siano passati come argomenti della procedura. Se la routine dovrà restituire informazioni, allora essa andrà definita come funzione e l'informazione da restituire sarà passata come valore di ritorno della funzione. Se l'informazione da restituire è multipla, cioè si dovranno restituire piÙ informazioni allora queste saranno memorizzate negli argomenti della routine. Questi particolari argomenti saranno opportunamente passati per riferimento dalla procedura chiamante.
+La routine utilizzerà variabili locali per le sue operazioni interne, e potrà accedere alla variabili globali solo in lettura, cioè non le potrà modificare. Il compito di modificare le variabili globali spetta alle routines di inizializzazione e terminazione del programma.
+Cenni generali sulla natura del programma realizzato.
+Le operazioni di assemblaggio e disassemblaggio di codice non sono altro che operazioni di compilazioni. Esistono due grandi categorie di compilatori. I native-compiler ed i cross-compiler.
+Nei primi il codice prodotto verrà utilizzato (eseguito) su una macchina dello stesso tipo (è la normale operazione di compilazione di un programma su PC). Nei secondi il codice prodotto verrà eseguito su una macchina di differente tipo (ad esempio si compila il codice su PC per poi eseguirlo su Amiga). In questo caso il codice viene prodotto da un PC (architettura a 16-bit e/o 32-bit corrispondente alla classe di µP 80x86) e verrà eseguito su un computer munito di microprocessore Z80 (8-bit). Quindi si tratta di un'operazione di cross-compiling.
+Le necessità di utilizzare dei cross-compilers sono molteplici; come ad esempio la non disponibilità della macchina su cui si utilizzerà il codice; oppure la poca potenza di quest'ultima. In quest'ultimo caso la stesura del codice su tale macchine renderebbe troppo lenta la fase di programmazione e di debugging.
+Per realizzare il cross-compiler dobbiamo simulare una macchina virtuale contenente una determinata quantità di memoria RAM. In questa memoria verrà memorizzato il codice prodotto dall'assemblatore. E da questa memoria verranno prelevati i dati per essere elaborati dal disassemblatore. Quindi si tratterà di definire una macchina virtuale dotata di una CPU (Z80) e di memoria RAM.
+La CPU in tale programma non è stata simulata ma lo sarà in una futura versione dello stesso. Mentre la memoria RAM simulata è di 16384 bytes corrispondente a 16 Kbyte.
+Formato dell'output dell'assemblatore e del disassemblatore.
+Il formato dell'uscita dell'assemblatore e del disassemblatore è comune. Questo output rappresenta una generica riga di un programma assembly, che può essere generata assemblando un file sorgente, oppure disassemblado locazioni di memoria virtuale.
+Il formato di questo output è una riga che ha la generica forma:
+IIII b1 b2 b3 b4 b5 XXXXXXXXXXX
+In cui:
+IIII: rappresenta l'indirizzo di memoria virtuale che contiene l'istruzione.
+b1, b2,..: rappresentano i bytes che formano l'istruzione LM. Naturalmente per istruzioni aventi meno di 5 bytes, alcuni di questi mancheranno. Questi bytes possono essere generati dall'ASM oppure prelevati dalla memoria virtuale dal DSM.
+XXXX: rappresenta la stringa dell'istruzione assembly. Questo può essere quella contenuto nel file sorgente passato all'assemblatore. O può essere generata dal disassemblatore.
+Nel caso in cui l'istruzione elaborata non sia presente nel DB: i due programmi generano effetti diversi.
+L'ASM ferma il processo stampando la linea che ha generato l'errore.
+Il DSM visualizza una linea del tipo:
+IIII b1 ???
+In cui:
+IIII: è l'indirizzo di memoria virtuale in cui è stata trovata
+l'istruzione sconosciuta.
+b1: il byte che rappresenta un opcode di un'istruzione sconosciuta.
+Dopo aver stampato questa linea il disasemblatore continua la fase di elaborazione.
+Questo diverso comportamento è generato dalla considerazione che per l'ASM un'istruzione sconosciuta viene generata generalmente da un errore sintattico. Continuare ad assemblare il programma significherebbe generare un listato in cui manca una linea. Ed un tale programma è di nessuna utilità (se non per verificare ulteriori errori), perché se mandato in esecuzione genererebbe un errore.
+Nel caso di un DSM un byte sconosciuto non deve necessariamente indicare un errore nel calcolo dell'opcode ma può indicare un eventuale byte di dato, che non verrà eseguito dal processore ma solo utilizzato per elaborazioni.
+Definizione di assemblatore.
+Un assemblatore è quel programma che permette di trasformare un file sorgente in ASCII, rappresentante un programma in linguaggio assembly, in un codice oggetto (file contenente l'equivalente in linguaggio macchina ma ancora non eseguibile). L'assemblatore non è altro che un caso particolare di compilazione. In questo caso si tratta di un cross-compiler perché il codice prodotto dovrà essere eseguito su una diversa macchina (munita di µP Z80).
+Un compilatore trasforma un file sorgente, in codice ASCII e rappresentante un programma in un linguaggio ad alto livello, in un file oggetto (object file). Questo file oggetto contiene tutta una serie di riferimenti esterni ad oggetti esterni, detti appunto riferimenti esterni (external references). Questi riferimenti esterni sono memorizzati nel file oggetto utilizzando il nome dell'oggetto referenziato. Questo oggetto può essere una funzione in una libreria esterna, una variabile, un comando residente, ecc. E' evidente che finché tali riferimenti esterni non verranno risolti, il codice oggetto non potrà mai diventare eseguibile. Succesivamente il file oggetto, sia che venga prodotto dall'assemblatore o da un più generico compilatore, dovrà passare per la fase di linkaggio in cui verranno risolti i riferimenti esterni e verrà aggiunto il codice di caricamento (startup). La fase di link darà origine al file eseguibile.
+La principale differenza tra un assemblatore ed un compilatore è nella potenza delle istruzioni che i due tipi di linguaggi possono esprimere (linguaggi ad alto/basso livello). Un'istruzione in linguaggio assembly avrà una piccola potenza perché capace di eseguire semplici operazioni. Mentre un'istruzione in un linguaggio ad alto livello potrà eseguire operazioni molto complesse, risultando così più potente.
+Quindi in linea generale un assemblatore è molto più semplice da realizzare rispetto ad un compilatore di linguaggio evoluto, proprio per la scarsa potenza delle istruzioni da elaborare.
+Tipi di assemblatori.
+Esistono tre divesi tipi di assemblatori:
+Assemblatori di linea: Permettono di assemblare il programma generando l'opportuno codice per il µP. Non offre altre caratteristiche che possano facilitare la programmazione (assemblano ogni linea indipendentemente dall'altra), né offrono editors interni. Il loro uso è particolamente scomodo.
+Monitors: racchiudono nello stesso programma sia l'assemblatore, il disassemblatore che l'editor. Permettono semplici operazioni sia nella programmazione (non offrendo nessuna particolare facilitazione) sia nei comandi di edit del testo.
+MacroAssemblatori: rappresentano lo stato dell'arte per i programmatori. Permetto complesse operazioni di programmazione come la definizione di costanti, macrocomandi, segmenti dati. Generalmente per la loro alta specializzazione non offrono l'editor, ma sono generalmente compatibili con i più famosi editors in commercio.
+Nell'ottica di tale divisione, il programma da noi realizzato è un assemblatore di linea. Che ricade quindi nella prima categoria di software.
+Introduzione alla realizzazione dell'assemblatore.
+Una sessione di programmazione su di un computer munito di µP Z80 è costituita da diverse fasi:
+1) Creazione del programma in linguaggio Assembly Z80.
+2) Assemblaggio del programma.
+3) Correzione di eventuali errori con eventuale ripetizione del passo precedente.
+4) Esecuzione del programma.
+5) Visualizzazione dei risultati.
+Alcune note:
+-La fase 1 e 2 possono essere evitate se si codifica il programma direttamente in linguaggio macchina.
+-Per visualizzazione dei risultati si intende sia la visualizzazione dei registri del µP, sia la visualizzazione di locazione di memoria in esadecimale o in linguaggio assembly tramite il disassemblatore.
+In questo capitolo analizzeremo il secondo punto del precedente «programma».
+Volendo porre il problema di realizzare l'assemblatore sistemisticamente, si tratterà di progettare un sistema che avendo in input una stringa ASCII contenente l'istruzione in assembly; dia in output una stringa di n bytes contenente la sua codifica in linguaggio macchina (LM).
+Si tratta di un'operazione di conversione. Un operazione che il computer è particolarmente portato a realizzare. L'enorme numero di casi in cui il sistema si può trovare di fronte, sia in input che in output, rende però necessaria una oculata scelta del metodo di risoluzione.
+Parlando in termini informatici la risoluzione del problema implica la definizione di una base di dati (data base) contenente i dati di ogni istruzione dello Z80 sia in formato assembly che in LM.
+Strutture dati per l'assemblatore.
+L'assemblatore utiliza una base di dati. Nella definizione dello schema concettuale di tale base di dati le entità sono le istruzioni dello Z80. Nel definire le proprietà non bisogna definire informazioni troppo generiche (il che diminuirebbe la dimensione dell'archivio ma renderebbe troppo complesso il calcolo dei bytes dell'istruzione) né troppo particolareggiate (il che farebbe aumentare le dimensioni dell'archivio ma renderebbe d'altronde lenta la fase di ricerca delle istruzioni).
+Le propropietà di ogni entità «istruzione dello Z80» sono:
+1) Codifica della stringa alfanumerica rappresentante l'istruzione Assembly.
+2) Numero degli opcodes.
+3) Opcodes veri e propri.
+4) Numero e dimensione degli operandi.
+Nella risoluzione del problema abbiamo considerato le istruzioni (sia assembly che LM) divise in parte statica e in parte dinamica.
+Si definisce parte statica di un'istruzione quella parte (caratteri, opcodes) che non varia in funzione dell'operazione che l'istruzione andrà ad eseguire ma rimane uguale per tutta una classe di istruzioni.
+Si definisce parte dinamica di un'istruzione quella parte (numerica) che risulta variabile.
+Per esempio consideriamo l'istruzione assembly:
+LD A,13
+la cui codifica LM è 10, 13.
+La parte statica in assembly è "LDA," mentre in LM è 10. La parte dinamica per entrambe vale 13.
+C'è da considerare che per stringa assembly statica si intende sempre una stringa ottimizzata: senza spazi ed espressa in lettere maiuscole.
+I dati sopra menzionati sono stati «impacchettati» nel seguente RECORD Pascal:
+OpcRec = RECORD
+OPCSTR: string[12];
+OPCNUM: 1..3;
+OPCARR: array[1..3] of byte;
+DINNUM: 0..2;
+End;
+Giustifichiamo queste scelte.
+-OPCSTR: rappresenta la stringa statica dell'istruzione assembly. La dimensione di 12 elementi non è stata casuale, infatti è stata scelta considerando le istruzioni:
+-ADC A,(IX+d); ADC A,(IY+d)
+-BIT n,(IX+d); BIT n,(IY+d)
+-SET n,(IX+d); SET n,(IY+d)
+-RES n,(IX+d); SET n,(IY+d)
+in cui:
+n: bit da elaborare (0÷7).
+d: spiazziamento (offset).
+Queste istruzioni hanno la massima lunghezza della stringa statica che è di 11 caratteri.
+-OPCNUM: rappresenta il numero di bytes d'opcode per l'istruzione memorizzata.
+Il massimo numero di bytes d'opcode per istruzione dello Z80 è 3. E' quindi chiaro l'ampiezza del SUBRANGE (1..3).
+-OPCARR: contiene i bytes d'opcode per l'istruzione. C'è da notare che la lunghezza di quest'array è di 3 elementi in base alle precedenti considerazioni su OPCNUM. Però non tutte le istruzioni hanno 3 bytes d'opcode. Quindi il numero di bytes significativi per OPCARR sarà contenuto proprio in OPCNUM.
+-DINNUM: rappresenta il numero di bytes per la parte dinamica dell'istruzione (operando), esso assume valori da 0 (nel caso in cui l'istruzione non abbia operandi) a 2 (massimo numero di bytes per la parte dinamica).
+Ogni record OpcRec rappresenta un elemento della base di dati. Il problema che ora sorge è quello di scegliere una opportuna struttura al data base (DB) e di scegliere una opportuna chiave di ordinamento, in modo da facilitare le operazioni di ricerca. Parlando in termini informatici si deve trovare una relazione tra i vari records, cioè i flussi che collegano le informazioni.
+Per la base di dati abbiamo scelto la struttura di una matrice di 3 righe e 128 colonne. Ogni riga contiene una diversa classe di istruzioni. Abbiamo deciso di dividere le istruzioni in base al numero di bytes di parte dinamica. Una istruzione dello Z80 può avere 2-byte, 1-byte, 0-byte di parte dinamica. Per questa ragione la matrice è di tre righe. Nella prima riga andranno le istruzioni con non hanno parte dinamica, nella seconda riga le istruzioni con un byte di parte dinamica e la terza riga le istruzioni con due bytes di parte dinamica che possono rappresentare uno o due operandi.
+Il record OpcRec perde quindi il campo DinNum che risulta inutile e diventa quindi:
+OpcRec = RECORD
+OPCSTR: string[12];
+OPCNUM: 1..3;
+OPCARR: array[1..3] of byte;
+End;
+La scelta di utilizzare una matrice permette di dividere il data base in un modo molto razionale.
+Questa scelta è stata motivata anche da altre ragioni.
+Infatti per parte dinamica intendiamo quella parte numerica dell'istruzione che una volta convertita in binario andrà aggiunta dopo gli opcodes in memoria. Ci sono infatti istruzioni che pur avendo una parte numerica, quest'ultima non dovrà essere elaborata come parte dinamica.
+Consideriamo l'istruzione:
+LD HL, C000
+il cui equivalente LM è 2100C0. Come si può notare la parte dinamica dell'istruzione (00C0) è stata aggiunta subito dopo l'opcode (20).
+Consideriamo invece l'istruzione:
+BIT 1,A
+il cui equivalente LM è CB4F.
+Della parte dinamica dell'istruzione (1) non vi è traccia nell'istruzione. Questo perché esso è stata codificata nel secondo byte dell'opcode in modo da risparmiare spazio in memoria.
+Quindi è chiaro che per una corretta elaborazione bisogna considerare questa istruzione come non avente parte dinamica.
+Volendo considerare la precedente istruzione come avente parte dinamica, bisognerebbe sviluppare un algoritmo capace di modificare l'opcode in funzione del tipo di istruzione. Quindi capace di considerare come un caso unico le istruzioni:
+BIT 1,A = CB4F
+BIT 2,A = CB57
+in un generico caso:
+BIT x, A = CByy
+Dovrebbe cioè essere capace di generare il secondo byte dell'opcode. Ciò permetterebbe di compattare il DB ma renderebbe molto più lenta l'elaborazione. La cosa è resa complicata dal fatto che la codifica del secondo byte è particolarmente complessa.
+Ogni istruzione BIT inizia con il byte CB. Il secondo byte ha la generica forma in binario:
+01nnnrrr
+In cui:
+01:costante, rappresenta il tipo di operazione.
+nnn: variabile, rappresenta il bit da provare.
+rrr: variabile, rappresenta il registro il cui bit va provato.
+Se è vero che codificare tale serie di informazioni non è eccessivamente complicato per un'istruzione, è pur vero che eseguire tale operazione per le centinaia di istruzioni dello Z80 è un compito davvero oneroso.
+Per queste ragioni abbiamo deciso di considerare come parte dinamica solo quella parte numerica dell'istruzione che una volta codificata andrà aggiunta semplicemente in coda agli opcodes.
+Quindi l'istruzione:
+BIT 1, A
+avrà come parte statica:
+"BIT1,A"
+e non avrà parte dinamica.
+Il problema che ora sorge è come fare a riconoscere le istruzioni in cui la parte numerica non rappresenta parte dinamica ma quella statica. Cioè come facciamo a riconoscere l'istruzione "LDA,10" da "BIT1,A"? La soluzione ci è data dalla stessa struttura che abbiamo dato al DB in cui ogni riga rappresenta una diversa classe di istruzioni (senza, con 1 o 2 bytes di parte dinamica).
+Quindi in generale andremo a cercare l'istruzione prima nella lista delle istruzioni senza parte dinamica, e poi nelle altre due. Considerando poì che sono statisticamente più utilizzate le istruzioni che non hanno parte dinamica perché risultato molto veloci, in contrapposizione con le istruzioni con 2 bytes di parte dinamica che sono quelle più lente e più rare da incontrare è chiaro che tale soluzione risulta ottimale.
+Non resta da scegliere che il tipo di ricerca da effettuare. In primo luogo la chiave di ricerca è la stringa statica compattata dell'istruzione. Per quanto riguardo l'algoritmo, potremmo scegliere un tipo di ricerca sequenziale (in cui scandiamo in successione ogni elemento di ogni riga). Ma risulta preferibile un tipo di ricerca binaria, per la sua rapidità e semplicità.
+C'è da notare che potremmo utilizzare un tipo di ricerca random memorizzando i records tramite una tecnica HASH, ma ciò risulterebbe troppo oneroso in termini di tempo e memoria e risulterebbe di una certa difficoltà in fase di implementare. Quindi esulerebbe dallo scopo di questa trattazione che ricordiamo ha un fine didattico.
+Analisi generale dell'assemblatore.
+Per assemblare necessitano almeno due informazioni: il codice sorgente e l'indirizzo in cui memorizzare tale codice.
+Il codice sorgente è contenuto nel file sorgente, e l'indirizzo da cui partire a memorizzare il codice è dato dall'utente.
+Ogni linea del codice viene assemblato indipendentemente dall'altra. Quindi assemblare una linea o cento non fa cambiare nulla nell'analisi del procedimento. Quindi per spiegare il procedimento risolutivo immagineremo di assemblare una generica linea di codice.
+Una piccola premessa. La compilazione di una istruzione di un linguaggio di programmazione necessita di almeno due fasi di elaborazione:
+-una fase di controllo semantico, per verificare il corretto significato delle istruzioni.
+-Una fase di controllo lessicale-ortografico per verificare che quelle determinate istruzione, corrette sintatticamente, esistano sul serio.
+Quindi bisogna definire o, per meglio dire (dato che già hanno pensato a questo gli ingegneri della Zilog), cercare un certo numero di regole (controlli) che siano il più generico possibile in modo da verificare immediatamente se un'istruzione è errata.
+Definizione delle regole di controllo di una istruzione.
+Se per alfabeto intedessimo l'insieme dei simboli grafici che vengono usati per esprimere una idea e per linguaggio di programmazione una vera e propria lingua; allora avremo che il linguaggio (lingua) Assembly Z80 ammette come alfabeto per esprimere le proprie istruzioni (termini) il seguente insieme di 26 simboli:
+{ABCDEFHIJLMNOPRSTXYZ01234567890+, ()'}
+con cui possiamo esprimere qualsiasi istruzione di questo linguaggio.
+Se poi andassimo a definire  l'alfabeto del linguaggio macchina Z80 allora in formato binario esso sarebbe formato solo da due simboli:
+{0,1}
+mentre in formato decimale da 10 simboli:
+{0,1,2,3,4,5,6,7,8,9}
+Quanti sono necessari per esprimere ogni istruzione LM dello Z80.
+Quindi un primo controllo sulla correttezza di una istruzione è quello di verificare se i caratteri ASCII che compongono la stringa facciano parte dell'alfabeto dell'assembly Z80.
+Un secondo controllo è di tipo semantico per vericare che anche se i simboli sono corretti questi siano «disposti» in un ordine corretto.
+Ad esempio non ha senso scrivere:
+LD A+,30
+oppure:
+LD )(,30
+Quindi si dovranno definire tutta una serie di controlli a cui sottoporre la stringa.
+Sistemisticamente parlando si dovrà definire una macchina a stati o in modo più preciso un automa improprio in cui:
+-l'ingresso è rappresentato da ogni singolo carattere della stringa.
+-l'uscita è rappresentata da un valore booleano che indica la detezione di un errore nell'istruzione.
+La definizione della variabile stato è necessaria perché per verificare se l'n-isimo carattere contiene un errore, bisogna tenere in considerazione anche il carattere n-1. In particolari tipi di errori (parentesi aperta senza una corrispondente parentesi chiusa) bisogna non solo tenere in considerazione il carattere immediatamente precedente ma un generico e «distante» carattere precedente.
+Andremo quindi a controllare 5 classi di errori specifici:
+1) Parentesi aperta.
+2) Parentesi chiusa.
+3) Segno più.
+4) Segno virgola.
+5) Segno apice singolo.
+In generale i 5 controlli specifici vanno a verificare che due o più simboli non siano adiacenti. Ciò generalmente è un caso d'errore (eccetto naturalmente il caso nel quale la parentesi chiusa è seguita da una virgola). Oppure vanno a verificare che non si utilizzi per la stessa istruzione lo stesso simbolo due volte. Ad esempio nessuna istruzione utilizza per due volta la virgola o una parentesi aperta o due segni più.
+In particolare vanno eseguiti i seguenti controlli:
+-Se il carattere n-isimo è una parentesi tonda aperta, si va a verificare se già è stata aperta una parentesi, in caso affermativo si tratta di un errore.
+-Se il carattere n-isimo è una parentesi tonda chiusa, si va a verificare se non è stata aperta una parentesi tonda oppure se già è stata chiusa una parentesi tonda, oppure che il carattere immediatamente precendete (n-1) è una parentesi aperta. In tutti questi casi si tratta di un errore.
+-Se il carattere n-isimo è un segno più allora si verifica se è già stato utilizzato tale simbolo, oppure che il carattere precedente non sia numerico. In questi casi si tratta di errore.
+-Se il carattere n-isimo è una virgola si va a verificare che non sia stato già utilizzato tale simbolo oppure l'apice, oppure che il carattere precedente sia una parentesi aperta. In questi casi si tratta di errore.
+-Se il carattere n-isimo è un apice si va a verificare se è gia stato utilizzato tale simbolo, oppure che il carattere precedente sia numerico. In questi casi si tratta di errore.
+Generalizzando questi dati otterremo che in una generica istruzione dello Z80 possono essere presenti solo per una volta i simboli di virgola, apice e parentesi. Per giunta il simbolo di apice non precede mai quello di virgola. Il simbolo di parentesi chiusa non precede mai quello di parentesi aperta. Inoltre non possono succedersi nell'ordine i simboli virgola-parentesi aperta, oppure apice-virgola, oppure carattere numerico-apice, oppure carattere numerico-più.
+Costituisce inoltre errore il caso in cui una stringa sia presente solo il carattere parentesi aperta senza il corrispondente simbolo di parentesi chiusa.
+Detti così questi dati possono sembrare senza senso, quindi diamo una motivazione a questi aridi dati.
+Tali scelte vennero prese da parte della Zilog per evitare casi senza senso oppure per evitare istruzioni troppo complesse.
+Del primo caso fanno parte ad esempio il caso cifra-apice oppure cifra-apice.
+Per comprendere il secondo caso basta considerare che in una istruzione il simbolo più viene utilizzato per indicare un indirizzamento indicizzato. Quindi se in una istruzione fossere presenti due simboli più, allora significherebbe che si può usare per due volte tale tipo di indirizzamento cioè sia per il sorgente che per la destinazione, ma renderebbe l'istruzione troppo complessa. Allo stesso modo permettere che in una istruzione siano presenti due simboli virgola o due serie di parentesi aperta/chiusa indicano rispettivamente che si possono utilizzare tre operandi per istruzione nel primo caso, e per due volte un indirizzamento a scelta tra diretto e indicizzato nel secondo. Tutto ciò renderebbe troppo complessa l'istruzione da eseguire dal µP.
+Il simbolo di apice non può precedere quello di virgola perché l'apice indica un registro del set alternativo, e si è scelto di utilizzare tali registri solo come secondo operando. Tali regole sono state dedotte da uno studio statistico approfondito delle tabelle delle istruzioni dello Z80.
+Analisi Assemblaggio di una linea di codice.
+Immaginiamo di aver dato in input all'Assemblatore una linea di codice Assembly, vale a dire una stringa.
+Il programma «non sà nulla» di questa stringa. Potrebbe anche non  indicare una istruzione ma una qualsiasi stringa ASCII.
+Ed ancora di più, può darsi che la stringa indichi un'istruzione, ma gli operandi siano errati.
+Quindi il programma per «difendersi» da queste condizioni di errore deve eseguire una certa serie di operazioni.
+Ma andiamo per ordine. Come dicevo prima, immaginiamo di dare in «pasto» all'assemblatore una linea di codice, che d'ora in poi chiameremo stringa sorgente (SOURCE STRING).
+La prima operazione che l'assembler esegue è di ottimizzare la stringa. Togliere cioè tutti gli spazi, i commenti, e convertire tutte le lettere minuscole in maiscole. Ottenendo quindi una stringa ottimizzata (OPTIMIZED STRING). L'ottimizzazione è necessaria non solo perché le stringhe del data base (DB) sono espresse in questo formato per risparmiare spazio in memoria, ma anche per velocizzare le operazioni di elaborazione. Inoltre le lettere minuscole non fanno parte dell'alfabeto dello Z80 così come l'abbiamo definito, bisognerà quindi convertirle nel loro equivalente maiuscolo.
+Fino a questo punto il programma non sa ancora nulla sul contenuto della stringa, cioè se il suo contenuto è coerente con il linguaggio Assembly Z80. Per verificare ciò effettuiamo una serie di controlli di tipo lessicale-sintattico sull'istruzione.
+I controlli di tipo sintattico già sono stati trattati. Il controllo lessicale è necessario perchè una volta determinato che l'istruzione è corretta (cioè rispetta una serie di regole generali) bisogna verificare se essa esiste veramente (cioè fa parte del DB).
+Si effettua prima il controllo sintattico e successivamente quello lessicale perchè è più veloce verificare se un'istruzione contiene errori del primo tipo che del secondo tipo. Se un'istruzione è errata sintatticamente con tutta probabilità non verrà trovata neppure nel DB presentando quindi anche un errore lessicale, quindi dato che tutte e due controlli daranno esito negativo, tanto vale effettuare prima quello più veloce.
+Dopo aver effettuato il controllo sintattico la stringa viene divisa in parte statica e in parte dinamica. Il controllo lessicale viene eseguito cercando la parte statica dell'istruzione all'interno del DB.
+Se anche questo controllo risulta positivo si procede al'effettiva conversione (assemblaggio), le caratteristiche di quest'istruzione sono contenute nel RECORD del DB, e si utilizzeranno questi dati per produrre il codice oggetto. L'opcode del codice oggetto è contenuto nel DB mentre gli eventuali operandi verranno prelevati dalla stringa dinamica, il risulatato verrà memorizzato nella memoria di compilazione.
+Definizione di disassemblatore,
+Un disassemblatore è quel programma che permette di trasformare un file oggetto, cioè una stringa binaria rappresentante un programma in LM, in un file di testo che rappresenta l'equivalente programma in linguaggio assembly. Un disassemblatore non è altro che un caso particolare di decompilatore. Un decompilatore trasforma un file oggetto nell'equivalente file sorgente. Un decompilatore può essere considerato anche come un caso particolare di compilazione: in cui il codice prodotto si trova ad un livello superiore rispetto al codice sorgente.
+In questo caso si tratta di un cross-decompiler; perché il codice oggetto in infresso è frutto di una compilazione realizzata su una diversa macchina, che utilizza forse un diverso microprocessore.
+Paradossalmente i decompilatori sono utilizzati, oltre nell'ambito del linguaggio assembly, solo per i linguaggio interpretati. Un file sorgente in un linguaggio interpretato viene compilato in modo da accelerare la sua esecuzione. I decompilatori per i linguaggio compilati non esistono. Infatti si tratterebbe di generare in funzione di un file eseguibile, il relativo sorgenti in linguaggio C o Pascal. Naturalmente un tale compito risulta impossibile, anche perché genererebbe un sorgente di scarso utilizzo, e quindi di nessuna utilità.
+La differenza tra un disassemblatore e un decompilatore di linguaggio interpretato sta nella diversa potenza che le singole istruzioni dei due tipi di linguaggio possono esprimere.
+Un linguaggio interpretato può esprimere tramite le sue istruzioni delle operazioni molto complesse, mentre un'istruzione in linguaggio assembly può esprimere solo operazioni poco complesse.
+Quindi in linea di principio un disassemblatore risulta essere di più semplice realizzazione rispetto ad un decompilatore.
+Introduzione alla realizzazione del disassemblatore.
+L'utilità di un disassemblatore sta nel poter visualizzare una stringa di bytes di un programma in LM dello Z80, in un formato comprensibile all'uomo (o almeno per i programmatori): in linguaggio assembly.
+Volendo porre il problema di realizzare un disassemblatore sistemisticamente allora si tratterà di progettare un sistema che avendo in ingresso una stringa di bytes rappresentante un programma LM, dia in uscita l'equivalente decodifica come stringa alfanumerica in linguaggio assembly Z80.
+Come per l'assemblatore anche per il disassemblatore si tratta di effettuare un'operazione di conversione.
+In termini informatici si tratta di definire una base di dati (data base) contenente per ogni istruzione LM dello Z80 l'equivalente in assembly.
+Strutture dati per il disassemblatore.
+Se il data base (DB) per l'assemblatore aveva la struttura di un enorme matrice di 3 righe per 128 colonne, nel caso del disassemblatore si tratta di definire un vettore contenente in ogni elemento i dati di un'istruzione dello Z80.
+Per l'assemblatore si era scelto la forma di una matrice per meglio organizzare il DB, in modo che istruzioni con lo stesso numero di bytes di parte dinamica risiedessero nella stessa riga della matrice.  Facendo in modo di ottimizzare la fase di ricerca. Tale scelta è stata fatta  perché si trattava di effettuare un'interpetrazione di una istruzione espressa in formato alfanumerico codificandola in formato numerico.
+Si trattava quindi di una sorta di IA (intelligenza artificiale) cioè  far comprendere alla macchina un linguaggio ad alto livello (o almeno ad un livello più alto di quello LM). Anche per questa ragione il DB dell'ASM deve pur essere più complesso di quello del DSM.
+Il formato sorgente dell'ASM è un formato facilmente comprensibile dall'uomo ma un po' di meno dalla macchina. Il formato LM (che è quello sorgente del DSM) è molto più semplice da gestire per la macchina trovandosi di fronte già ad una serie di bytes. Si tratta quindi di cercare all'interno del DB una determinata stringa di bytes (istruzione LM) e stamparla con un diverso formato. Cioè effettuare quell'operazione che in linguaggio C viene chiamato output attraverso un formato. La struttura di questo formato con i relativi argomenti sono contenuti in un record del vettore del DB.
+In questo caso la ricerca risulta maggiormente ottimizzata si viene effettuata all'interno di un vettore.
+Ogni record del vettore contiene i seguenti dati:
+1) Stringa statica dell'istruzione.
+2) Opcodes.
+3) Posizione della stringa dinamica nell'istruzione.
+4) Numero di bytes per la parte dinamica.
+Diamo una motivazione a tali scelte.
+In primo luogo estendiamo la definizione di parte statica e parte dinamica. Esse assumono un diverso significato in funzione del fatto che si stia parlando di un'istruzione assembly o di un'istruzione in LM.
+Per un'istruzione espressa in linguaggio assembly, la parte statica corrisponde a quella parte alfanumerica dell'istruzione che permette di ricavare direttamente il codice operativo. La parte dinamica invece corrisponde a quella parte della stringa che permette di ricavare i bytes degli operandi dell'istruzione che andranno aggiunti in coda ai codici operativi.
+Per un'istruzione espressa in linguaggio macchina, la parte statica corrisponde al codice operativo, mentre la parte dinamica ai bytes degli operandi dell'istruzione.
+Ogni record del DB contiene i dati per un'istruzione dello Z80. Questi dati non sono altro che gli opcodes, la stringa statica, ed altre informazioni che sono caratteristici di un'istruzione Z80. Questi dati andranno memorizzati all'interno del record. Ricordo che lo scopo dell'uso di un disassemblatore è quello di stampare una stringa: un'istruzione assembly dello Z80. Quest'istruzione sarà formata da una parte statica e una dinamica. La parte statica di questa istruzione assembly è un'informazione che bisognerà memorizzare all'interno di questo record, non essendo ricavabile direttamente dagli opcodes (per non complicare troppo il programma). La parte dinamica dell'istruzione assembly la ricaveremo direttamente dalla parte dinamica dall'istruzione LM. Il problema che ora sorge è dove stampare la parte dinamica?
+Chiariamo meglio questo problema tramite un esempio.
+Se dal disassemblaggio di un'istruzione abbiamo ricavato dal DB la stringa statica:
+"LDA,"
+e dall'elaborazione degli operandi dell'istruzione LM la seguenti stringa dinamica:
+"10"
+Come possiamo fondere le due stringhe in modo da ottenere l'istruzione esatta? Un metodo semplice prevederebbe di eseguire la somma di queste due stringhe in modo da ottenere la stringa:
+"LDA,10"
+E' chiaro però che tale procedimento non è generico. Infatti esistono istruzioni assembly (le istruzioni LM hanno la parte dinamica in coda agli opcodes) che hanno la parte dinamica al centro di quella statica per esempio:
+ADC A,(IX+d)
+in cui d rappresenta un byte di spiazziamento.
+Come si può notare la parte dinamica (lo spiazziamento) non si trova in coda all'istruzione.
+Per questa ragione dovremo memorizzare la posizione della parte dinamica all'interno della stringa. C'è da notare però che esistono istruzioni che hanno due distinti argomenti di parte dinamica come:
+LD(IX+n), m
+in cui n è l'offset ed m è un byte di operando.
+Quindi dato che un'istruzione al massimo può avere due bytes di parte dinamica che possono esprimono al massimo due diversi argomenti allora sarà necessario conservare due diverse posizioni, una per il primo operando, e un'altra per il secondo. Naturalmente uno o entrambe queste informazioni possono assemere valore nullo per indicare che quell'istruzione ha un solo operando di parte dinamica o nessun operando.
+Quindi rappresentando in tabella le posizioni dei due possibili operandi in funzione dei loro valori avremo:
+ Pos. operando 1 | Pos. operando 2  | Significato
+--------------------------------------------------
+        0        |        0         |  L'istr. non ha parte dinamica.
+      <>0        |        0         |  L'istr. ha parte din.
+      <>0        |      <>0         |  L'istr. ha 2-byte di parte din.
+                 |                  |  che rappresentano 2 operandi.
+        0        |      <>0         |  Non ha significato perchè
+                 |                  |  ricade nel primo caso
+In definitiva abbiamo codificato tali informazioni all'interno di un record Pascal che ha la seguente struttura:
+IsrRec = Record
+OpcStr : ISRSTR;
+OpcNum : 1..3;
+OpcDat : array[1..3] of byte;
+DinPosA: 0..MAXSTR;
+DinPosB: 0..MAXSTR;
+DinNum : 0..2;
+End;
+In cui rappresentano:
+-OpcStr: la stringa statica dell'istruzione assembly.
+-OpcNum: il numero di bytes di opcode dell'istruzione, e considerando che un'istruzione al massimo può avere tre bytes di opcode, definiamo come da 1..3 il subrange di questa variabile.
+-OpcDat: il vettore contenente gli effettivi bytes d'opcode dell'istruzione. Naturalmente sono significativi solo i primi OpcNum bytes.
+-DinPosA: posizione all'interno della stringa statica del primo operando di parte dinamica, questo campo assume valore zero nel caso in cui l'istruzione non abbia parte dinamica.
+-DinPosB: posizione all'interno della stringa statica del secondo operando di parte dinamica, questo campo assume valore zero nel caso in cui l'istruzione non abbia un secondo operando di parte dinamica.
+-DinNum: numero di bytes di parte dinamica dell'istruzione. Dato che un'istruzione al massimo può avere due bytes di parte dinamica, allora definiremo questo campo come un subrange da 0 a 2. In cui zero indica la mancanza di parte dinamica. Se l'istruzione ha due byte di parte dinamica che rappresentano due operandi, allora questo è rilevato dal parametro DinPosB che sarà differente da zero.
+Abbiamo già parlato della struttura del DB per il disassemblatore, non resta ora che parlare della chiave usata per l'ordinamento del vettore e dell'algoritmo di ricerca.
+Abbiamo scelto come chiave per l'ordinamento il campo OpcDat. Infatti è chiaro che, prelevando l'istruzione LM dalla memoria, la prima informazione che potremo utilizzare sarà l'opcode. Inoltre c'è una relazione 1:1 tra opcode ed istruzione.
+I records sono stati ordinati in modo che i codici d'opcode risultino cresenti. C'è da notare però che non tutte le istruzioni hanno lo stesso numero di bytes d'opcode. Quindi abbiamo riordinato il vettore del DB prima in funzione del primo byte d'opcode. Generando quindi delle sotto liste di elementi che avevano lo stesso primo byte d'opcode. Successivamente per le istruzioni aventi due bytes d'opcode, abbiamo proceduto a riordinare l'elenco anche in funzione del secondo byte. E la stessa operazione è stata effettuata per le istruzioni aventi tre bytes d'opcode. Ottenendo un elenco di facile consultazione.
+Abbiamo scelto come algoritmo di ricerca quello dicotonico sulla falsariga dell'assemblatore. L'algoritmo questa volta risulterà più complesso sia per l'ampiezza del vettore (infatti nell'ASM la ricerca veniva effettuata di volta in volta su una singola riga della matrice, e sarà chiaro che il vettore del DSM è molto più lungo per numero di elementi di qualsiasi riga della matrice dell'ASM) sia perché l'informazione da cercare (opcode) non è «sicura». Cioè non siamo sicuri che serva per intero.
+Nota sui Data Bases.
+L'assemblatore ed il disassemblatore utilizzano due distinte basi di dati: una matrice ed un vettore. Ciò è in disaccordo con un principio basilare delle basi di dati: una soluzione unica (un solo archivio) per un sistema informativo.
+Tale situazione è ancora piÙ insostenibile perchè le informazioni contenute nel record OpcRec dell'ASM sono contenute per intero nel record IsrRec del DSM.
+Quindi in linea di principio si potrebbe utilizzare lo stesso record per entrambi i programmi. Ma la base di dati per l'ASM e quella per il DSM sono strutturate differentemente. Infatti per il primo abbiamo una matrice e per il secondo abbiamo un vettore, che sono per di più ordinati con chiavi differenti. Il problema che ora sorge è di evitare di mantenere in memoria per due volte le stesse informazioni. Generando un problema di ridondanza. Per evitare ciò dovremo utilizzare la stessa base di dati. Solo che l'assemblatore utilizzerà parzialmente le informazioni presenti in ogni record mentre il DSM le utilizzerà tutte.
+Si vuole inoltre che il metodo di accesso e quindi di ricerca a questa base di dati rimanga invariato per l'ASM e per il DSM.
+Per fare ciò andremo a ridefinire lo schema interno, esterno e concettuale in modo da avere un unico archivio.
+Lo schema concettuale definisce le entità, le proprietà e le relazioni tra le varie entità.
+Nel nostro caso avremo come entità il record IsrVet.
+Il nostro schema prevede due strutture dati: una per l'indice ed una contenente gli effettivi  dati. L'indice andrà a sostituire una delle due vecchie basi di dati. Essa avrà la stessa struttura della base di dati che andrà a sostituire, ma ogni suo elemento invece di contenere i dati di un'istruzione conterrà il puntatore al record cercato nell'altro archivio. Quindi avremo sempre un vettore ed una matrice, ma solo una di queste conterrà gli effettivi dati: l'altra conterrà semplicemente dei puntatori. Questi puntatori crereranno una relazione 1:1 tra elemento puntatore di una struttura dati e l'elemento contenente gli effettivi dati dell'altra struttura dati.
+Ad esempio avendo la matrice dell'assemblatore possiamo fare in modo che i suoi elementi siano degli interi, che sono gli indici del record cercato nel vettore del DSM.
+Ed è proprio questo il metodo utilizzato.
+Gli schemi esterni saranno due: una matrice per l'ASM ed un vettore per il DSM così da rispecchiare la vecchia gestione.
+Lo schema interno (cioè come verranno effettivamente memorizzate le informazioni) rispecchia lo schema concettuale.
+Rappresentando in una tabella lo schema interno originario (prima della ridefinizione dello schema concettuale) della matice dell'ASM per sei istruzioni avremo:
+Pos. riga/col. | OpcStr     | OpcNum | OpcDat
+---------------------------------------------------
+        0/1    | ADCA,B     |   1    | $8F, ?, ?
+        0/2    | BIT0,L     |   2    | $CB, $45, ?
+        1/1    | ADCA,(IX+) |   2    | $DD, $8E, ?
+        1/2    | ADDA,(IX+) |   2    | $DD, $86, ?
+        2/1    | CALLC,     |   1    | $DC, ?, ?
+        2/2    | CALLM,     |   1    | $FC, ?, ?
+
+In cui il carattere "?" rappresenta un byte indeterminato.
+Rappresentando in una tabella lo schema interno originario del vettore per il DSM avremo:
+ Pos. | OpcStr     | OpcNum | OpcDat      | DinNum | DinPosA | DinPosB
+----------------------------------------------------------------------
+  1   | ADCA,B     |   1    | $8F, ?, ?   |   0    |    0    |    0
+  2   | BIT0,L     |   2    | $CB, $8E, ? |   0    |    0    |    0
+  3   | CALLC,     |   1    | $DC, ?, ?   |   2    |    7    |    0
+  4   | ADDA,(IX+) |   2    | $DD, $86, ? |   1    |   10    |    0
+  5   | ADCA,(IX+) |   2    | $DD, $8E, ? |   1    |   10    |    0
+  6   | CALLM,     |   1    | $FC, ?, ?   |   2    |    7    |    0
+Il nuovo scherma interno per l'ASM è:
+Pos. riga/col. | Contenuto: Indice
+----------------------------------
+        0/1    |         1
+        0/2    |         2
+        1/1    |         5
+        1/2    |         4
+        2/1    |         3
+        2/2    |         6
+
+Mentre lo scherma interno per il DSM rimane invariato.
+Gestione casi speciali.
+Nella definizione delle strutture dati per l'ASM e per il DSM eravamo partiti dal concetto che per un'istruzione LM tutti i bytes di operandi erano situati in coda agli opcodes; cioè che rispettassero il seguente schema generico:
+opc1, opc2, opc3, dato1, dato2
+Ma ciò non è sempre vero. Esistono delle istruzioni che seguono un altro schema che si può genericamente rappresentare come:
+opc1, opc2, dato1, opc3
+In cui cioè il terzo byte d'opcode è il quarto byte dell'istruzione.
+Le istruzioni che ricadono in questo caso sono state divise in due categorie:
+1) Istruzioni in cui il quarto byte rappresenta solo l'opcode.
+2) Istruzioni in cui il quarto byte contiene oltre una parte d'opcode anche la parte dinamica.
+Della prima categoria fanno parte le seguenti istruzioni:
+-RL (IX+d);  RL (IY+d)
+-RLC (IX+d); RLC (IY+d)
+-SLA (IX+d); SLA (IY+d)
+-SRA (IX+d); SRA (IY+d)
+-SRL (IX+d); SRL (IY+d)
+In cui d rappresenta un offset.
+Della seconda categoria fanno parte le seguenti istruzioni:
+-BIT b,(IX+d); BIT (IY+d)
+-SET b,(IX+d); SET (IY+d)
+-RES b,(IX+d); RES (IY+d)
+In cui b rappresenta un numero tra 0 e 7, e d rappresenta un offset.
+Queste due categorie di istruzioni rispettano lo schema generale:
+opc1, opc2, d, opc3
+In cui l'offset è il terzo byte dell'istruzione.
+Nella seconda categoria però la parte dinamica b (bit da elaborare, che può assumere un valore tra 0 e 7 quindi rappresentabile con 3-bit) non compare esplicitamente nell'istruzione, ma è contenuto nei bits da 3 a 5 di opc3.
+Per elaborare tali istruzioni abbiamo aggiunto un campo Special.
+Per le istruzioni non appartenenti a queste due categorie esso vale zero.
+Per le istruzioni della prima categoria vale uno mentre per le istruzioni della seconda categoria vale due.
+Abbiamo classificato le istruzioni appartenenti alla prima categoria come istruzioni aventi due bytes d'opcode e un byte di parte dinamica. Quindi andranno memorizzate nella seconda riga della matrice. Il terzo byte d'opcode è virtuale. Esso viene effettivamente memorizzato come terzo byte di OpcDat, ma viene utilizzato solamente quando si detezione tramite i primi due opcodes che quell'istruzione è speciale.
+Però andranno memorizzate nel vettore utilizzando tutti e tre i bytes in modo da avere tutte quelle istruzioni speciali che hanno i primi due bytes uguali ordinate in funzione del terzo byte virtuale.
+Abbiamo classificato le istruzioni appartenenti alla seconda categoria come istruzioni aventi due bytes d'opcode e due bytes di parte dinamica. Quindi andranno memorizzate nella terza riga della matrice. Il terzo opcode è virtuale. Esso viene memorizzato come terzo byte di OpcDat ma con i bit da 3 a 5 resettati, in modo da permettere di considerare solamente gli altri bits durante l'elaborazione. Questo terzo byte d'opcode verrà opportunamente elaborato con la parte dinamica b prelevata dall'istruzioni assembly, per generare il terzo opcode, che agli occhi dell'ASM e del DSM è un byte di parte dinamica. Il terzo elemento di OpcDat viene utilizzato solamente quando si detezione, tramite i primi due opcodes, che quell'istruzione è speciale.
+Algoritmo di ricerca per il disassemblatore.
+L'algoritmo del DSM per la ricerca delle istruzioni LM all'interno del DB è di tipo dicotonico, ma viene implementato in un modo un po' singolare. Infatti l'informazione che viene passato all'algoritmo, può non venire utilizzata per intero.
+Mi spiego meglio. Il disassemblatore quando si trova di fronte ad una stringa di bytes, non sa nulla di questi. Quindi «fa» una serie di supposizioni. Una di queste si basa sul fatto che un'istruzione al massimo può essere composta da cinque bytes: tre/quattro per l'opcode e due/uno per gli operandi. Quindi preleva dalla memoria i cinque bytes necesari all'elaborazione, di questi al massimo solo i primi quattro bytes sono significativi per indicare all'interno del DB qual è l'istruzione LM. Questi quattro bytes vengono passati all'algoritmo di ricerca. Anche l'algoritmo di ricerca si basa su un presupposto. Istruzioni aventi medesimi bytes come parte iniziale hanno stessa lunghezza. Ad esempio se un'istruzione ha come primo byte il valore $CB allora saremo sicuri che quella sarà un'istruzione lunga due bytes.
+Quindi l'algoritmo effettua una ricerca basandosi solo sul primo byte d'opcode dell'istruzione prelevata in memoria e naturalmente sul primo byte d'opcode contenuto all'interno di ogni RECORD del DB. Questa operazione è facilitata dal fatto che il vettore è riordinato con un algoritmo di priorità (gli elementi vengono riordinati in funzione del primo elemento di OpcDat[], poi del secondo, ed infine del terzo). Una volta trovato il record, non sappiamo se questo è quello realmente cercato. Infatti esistono istruzioni di più bytes d'opcode che ne hanno in comune il primo o i primi due.
+Basandosi su questo record possiamo sapere però di quanti bytes è formato l'opcode dell'istruzione attualmente elaborata. Se l'istruzione trovata ha più di un byte d'opcode allora continueremo nell'operazione di ricerca. Se all'inizio della ricerca il campo di ricerca era esteso su tutto il vettore, adesso questo sarà ristretto a tutte le istruzioni che hanno il medesimo numero di bytes d'opcode ed hanno in comune il primo byte. Quindi dovremo ricerca il nuovo limite superiore ed inferiore (indici del primo ed ultimo elemento) delle istruzioni che possono essere quella cercata. Basandosi sul presupposto che istruzioni aventi lo stesso primo byte d'opcode hanno medesima lunghezza, allora sarà chiaro che queste istruzioni si troveranno una di seguito all'altra nel vettore. E si ripeterà l'algoritmo di ricerca dicotonico sulla nuova lista così delineata dal limite inferiore e superiore. Se l'istruzione è di tre bytes d'opcode oppure è speciale allora si ripeterà l'operazione di ricerca così descritta per il terzo byte d'opcode. Nel caso però che l'istruzione è speciale si utilizzerà per la ricerca il quarto byte dell'istruzioneprelevata dalla memoria per confrontarla con il terzo byte di OpcDat. Alla fine otterremo la posizione del record dell'istruzione all'interno del vettore del DB.
+Analisi generale del disassemblatore.
+Nella realizzazione del disassemblatore abbiamo seguito lo stesso metodo che utilizza il decoder dello Z80 quando si trova di fronte ad una serie di bytes. Ed abbiamo trasportato quell'algoritmo (o per meglio dire l'algoritmo che immaginiamo utilizzi) dalla sua implementazione hardware a quella software.
+Quindi il disassemblatore dovrà simulare in un certo senso il comportamento di una macchina a stati, cioè il decodificare dello Z80.
+Il decoder dello Z80 trovandosi infatti di fronte ad una serie di bytes segue tale procedimento:
+-Il primo bytes è un codice operativo, quindi procede ad esaminarlo
+-In funzione del primo byte vengono prelevati gli altri byte del codice operativo, questa serie d'informazioni vengono memorizzati in successione nel registro istruzione che è di 8-bit.
+Ogni byte d'opcode viene decodificato del decoder, e il controller sequencer attiverà i vari elementi della CPU: per prelevare altri bytes d'opcode, per prelevare altri byte di dati o per eseguire l'istruzione.
+-I byte di dato vengono prelevati dalla memoria e memorizzati negli appositi registri interni dello Z80.
+Allo stesso modo il disassemblatore:
+-Preleva i byte d'opcode dalla memoria di compilazione.
+-Ricerca all'interno della matrice tali byte (corrisponde alla fase di decodifica dello Z80).
+-In funzione delle caratteristiche dell'istruzione memorizzate nel DB vengono prelevati altri bytes che sono gli operandi dell'istruzione Z80..
+-Visualizza l'istruzione disassemblata.
+Le fasi del disassemblaggio verranno meglio analizzate nel successivo paragrafo.
+Disassemblaggio di una istruzione LM dello Z80
+Per spiegare il procedimento dell'algoritmo di disassemblaggio immaginiamo di voler disassemblare una determinata sequenza di bytes.
+Immaginiamo di trovarci nei «panni» del disassemblatore. Esso avendo in ingresso una stringa di bytes non sa nulla di questi. Potrebbero tanto rappresentare una istruzione dello Z80 tanto un numero di «telefono». Esso «sà» però una cosa: il massimo numero di bytes per un'istruzione dello Z80 è cinque. Quindi per essere sicuro di prelevare tutta l'istruzione preleva dalla memoria i primi cinque bytes. Successivamente effettua la ricerca all'interno del vettore di questa stringa di bytes. L'algoritmo di ricerca già è stato spiegato approfonditamente, quindi non ci soffermeremo più a lungo.
+Se la ricerca avrà avuto buon esito sapremo la posizione del RECORD dell'istruzione all'interno del DB. Tramite quest'ultimo possiamo sapere in primo luogo l'esatto numero di bytes d'opcode. Quindi possiamo escludere  già una parte dei quei cinque bytes iniziali, sapendone il significato. Potremo poi sapere quanti sono i bytes della parte dinamica, escludendo eventualmente l'ultima parte di quei cinque bytes. Dopo aver riorganizzato i bytes in memoria conservando solo la parte utile, non resta che effettuare la stampa utilizzando la parte statica dell'istruzione assembly che è un'altra informazione che utilizzeremo dal record. Il problema che ora sorge è come gestire l'eventuale parte dinamica.
+Il caso più semplice è quello in cui si tratta di stampare un'istruzione non avente parte dinamica oppure avente uno o due bytes di parte dinamica in un solo operando. Nel primo caso non si dovrà computare nessun ulteriore dato. Nel secondo caso basterà trasformare la parte dinamica in una stringa che andrà inserita nella posizione indicata da DinPosA del RECORD. Se invece l'istruzione ha due operandi di parte dinamica allora dovremo inserire nella stringa prima la stringa del secondo operando e poi quella del primo operando nelle posizioni rispettivamente DinPosB e DinPosA. Questo perché i parametri DinPosX indicano la posizione riferendosi ad una stringa statica senza parte dinamica. Se questo poco cambia per il parametro DinPosA, al contrario può generare degli effetti non previsti ed antiestetici nell'inserimento del secondo parametro. Se si vorrebbe inserire prima la stringa corrispondente al parametro DinPosA e poi quella corrispondente al parametro DinPosB allora bisognerebbe considerare come è variata la stringa in funzione dell'inserimento del primo operando e di conseguenza variare il parametro DinPosB. Ma sarebbe un'inutile sforzo evitabile coll'artificio menzionato sopra.
+C'è da notare che il disassemblatore non stampa solo l'istruzione assembly così ottenuta ma la fa precedere dall'indirizzo di memoria in cui era situata l'istruzione, seguito dai bytes dell'istruzione LM tutto ciò espresso in esadecimale.
+Codifica.
+Come per tutti gli algoritmi è la fase di analisi a creare i maggiori problemi, è chiaro comunque che molti problemi sfuggono nella fase di analisi e si mostrino in tutta la loro complessità solo troppo tardi: quando da un pezzo si è smesso di utilizzare carta e penna per l'analisi e si è pessati alla tastiera per la programmazione.
+Nonostante l'accurata analisi del problema, gli stessi problemi sono sorti in fase di codifica di questo programma.
+Volendo schematizzare la programmazione dell'assemblatore, allora si può immaginare questa come divisa in tre fasi:
+-Programmazione delle routines di supporto di primo livello.
+-Programmazione delle routines di supporto di secondo livello.
+-Programmazione delLoop principale.
+Descriveremo ora di seguito le singole routine che compongono l'assemblatore e successivamente quelle che compongono il disassemblatore.
+Per ognuna di esse descriveremo la funzione che svolge nonché l'input e l'output.
+NOTE:
+-La memoria di compilazione non è altro che la memoria della macchina virtuale in cui andrà memorizzato il codice oggetto.
+-Le routines che interagiscono direttamente con la memoria di compilazione hanno tutte come argomento MemInd, esso è passato per riferimento ed indica l'indirizzo attualmente elaborato.
+Variabili globali utilizzate.
+Sia per l'ASM che per il DSM le variabili globali utilizzate sono principalmente tre:
+-VM: di tipo VirtualMachine, contiene i dati della macchina virtuale simulata. In questa versione del programma viene utilizzata solo la memoria simulata.
+-OpcLst: matrice, che nella versione originaria dell'ASM conteneva i dati di ogni istruzione dello Z80, modificata per contenere come suoi elementi gli indici delle corrispondenti istruzioni nel vettore del DSM.
+-IsrVet: vettore del DSM (utilizzato indirettamente anche dall'ASM) che contiene i dati di ogni istruzione Z80.
+Organigramma Assemblatore
+Di seguito è mostrato un organigramma dell'assemblatore. Tale grafico permette una più rapida comprensione della struttura del programma.
+ Main  --> LoopASM--> BTOH
+--> StrCpt
+--> ScindeStr  --> ATOW
+  --> Aggiusta
+--> Controllo_Sintassi
+--> RicercaOpc
+--> Assemblaggio --> HandleDirective --> DB
+  --> DW
+Routines di supporto di primo livello.
+Le routines di supporto di primo livello sono tutte quelle routines che non svolgono ruoli di primo piano ma svolgono semplici e veloci operazioni di utilità. Esse vengono chiamate direttamente o indirettamente dal loop principale, e direttamente dalle routines di supporto di secondo livello.
+In questa categoria ricadono operazioni di:
+-conversione di formato.
+-elaborazione di stringhe.
+Per queste routines forniremo soltanto una stringata spiegazione, avendo esse una semplice struttura.
+ATOW
+Descrizione: Converte una stringa ASCII rappresentante un numero nell'equivalente intero espresso in formato word.
+Tipo: procedura.
+INPUT:
+strsor: stringa sorgente.
+OUTPUT:
+ew: equivalente intero della stringa d'input.
+Altre variabili:
+errore: eventuale errore di conversione.
+SCINDESTR.
+Descrizione: Scinde una stringa sorgente ottimizzata in stringa statica e stringa dinamica. Nella stringa sorgente ogni carattere della stringa dinamica è situato uno di seguito all'altro. L'inizio della stringa dinamica è determinato dal primo carattere numerico della stringa. Nel caso in cui l'istruzione ha due operandi di parte diamica allora la stringa dinamica sarà costituita dalla somma di queste due parti numeriche.
+Tipo: funzione.
+INPUT:
+STRSOR: stringa sorgente ottimizzata.
+STRVER: variabile in cui memorizzare la stringa statica, passato
+   per riferimento.
+DIN: variabile in cui memorizzare la stringa dinamica convertita
+in intero word, passato per riferimento.
+OUTPUT:
+i parametri STRVER, DIN opportunamente riempiti.
+Altre variabili:
+i, j, k, indice: contatori.
+strnum: stringa dinamica.
+parola: variabile di comodo.
+AGGIUSTA
+Descrizione: converte i caratteri della stringa sorgente da minuscoli a maiuscoli.
+Tipo: procedura.
+INPUT:
+STRSOR: stringa sorgente da convertire, passata per riferimento.
+OUTPUT:
+STRSOR: stringa convertita.
+Altre variabili:
+ASCII: valore ASCII del carattere esaminato.
+I: contatore.
+STRCPT
+Descrizione: Compatta una stringa sorgente. Elimina tutti gli spazi, i commenti e trasforma (tramite la routine AGGIUSTA) tutti i caratteri minuscoli in maiuscoli.
+Tipo: funzione.
+INPUT:
+STRSOR: stringa sorgente da compattare.
+OUTPUT:
+stringa compattata.
+Altre variabili:
+ st: stringa comodo.
+ lung: lunghezza della stringa.
+ i: contatore.
+BTOH.
+Descrizione: converte un intero in formato byte nell'equivalente stringa numerica espressa in base 16.
+Tipo: funzione.
+INPUT:
+DEC: decimale da convertire.
+OUTPUT:
+stringa numerica esadecimale equivalente al byte d'INPUT.
+Altre variabili:
+HD: Stringa contenente le cifre esadecimali.
+stringa: equivalente stringa del byte d'INPUT.
+Routines di supporto di secondo livello.
+Queste routines anche se svolgono funzione di supporto, queste non sono semplici compiti di utilità ma compiti ben precisi e complessi.
+Sono ritenuti ruotines di supporto nell'ottica della programmazione black boxes. E vengono tutte chiamate direttamente dal loop principale dell'assemblatore.
+Controllo_Sintassi
+Descrizione: Effettua un controllo sintattico su una riga del codice sorgente per detezionare eventuali errori.
+Tipo: funzione.
+Input:
+line: linea di codice sorgente su cui effettuare il controllo.
+OUTPUT:
+variabile booleana che indica con TRUE che la linea di codice
+contiene errori e con FALSE la condizione opposta.
+Altre variabili:
+c, i: contatori.
+lun: lunghezza della linea di codice.
+alfa: array contenente l'alfabeto dello Z80.
+len: lunghezza dell'alfabeto dello Z80.
+err: variabile booleana che indica con TRUE la presenza di un
+errore.
+--Le seguenti variabili sono tutte di tipo BOOLEAN e vengono usati --
+--come flags per memorizzare lo stato della routine   --
+pa:è stata trovata una parentesi aperta.
+pc:è stata trovata una parentesi chiusa.
+piu:è stata trovata un segno più.
+virgola:è stata trovata una virgola.
+apice:è stato trovato un apice.
+Analisi.
+La prima operazione è quella di resettare le variabili pa, pc, piu, virgola, apice in modo da resettare lo stato della routine. Si calcolano la lunghezza della linea di codice (lun) e quella dell'alfabeto Z80 (len). Successivamente inizia il procedimento di controllo. Esso è diviso in due fasi:
+-Controlla se i caratteri che compongono la linea di codice fanno parte dell'alfabeto.
+-Verifica se le regole (viste nell'apposito paragrafo) sulle istruzione dello Z80, siano rispettate.
+La seconda face non è altro che un ciclo, che contiene un considerevole numero di costrutti if...then che controllano se un determinato carattare è di un certo tipo, e in caso affermativo si verifica se questo carattere è «compatibile» con i caratteri che gli sono vicino o con lo stato attuale della routine.
+RicercaOpc
+Descrizione: Ricerca all'interno del DB, tramite l'indice contenuto nella matrice OpcLst, il record di un'istruzione dello Z80.
+Tipo: funzione.
+INPUT:
+OpcArr: riga della matrice cui utilizzare per effettuare la
+   ricerca.
+Lun: lunghezza della riga della matrice.
+StrPat: stringa che rappresenta l'istruzione da cercare.
+OUTPUT:
+Variabile intera che può assumere i seguenti valori:
+0:  la stringa cercata non è presente nella riga del DB.
+1÷lun: posizione dell'indice del record dell'istruzione
+  all'interno del DB.
+Altre variabili:
+inizio: indice del primo elemento dell'array in cui effettuare la
+   ricerca.
+fine: indice dell'ultimo elemento dell'array in cui effettuare la
+ ricerca.
+meta: indice dell'elemento medio proporzionale tra INIZIO e FINE.
+ E' l'elemento esaminato.
+res: variabile booleana che indica con TRUE che l'elemento di
+indice META è quello cercato.
+Analisi.
+Il metodo di ricerca utilizzato è quello dicotonico, basato sul concetto della divisione successiva del vettore di ricerca in due parti, e sulla verifica che l'elemento centrale è quello cercato.
+Alcune note sul vettore di ricerca. Come è noto il DB per l'assemblatore è una matrice, questo può essere considerato come un vettore di vettori, cioè ogni riga della matrice è un vettore. Quindi la ricerca verterà ogni volta solo su una riga del DB in modo da ottimizzare la ricerca. In effetti le istruzioni memorizzate in ogni riga non hanno stesse caratteristiche, ma come è noto sono divise in funzione dei bytes di parte dinamica.
+Assemblaggio
+Descrizione: Esegue un'assemblaggio di basso livello, memorizzando in memoria di compilazione i bytes degli opcode e degli operandi.
+Tipo: funzione.
+INPUT:
+MemInd: indirizzo di memoria (virtuale dello Z80) in cui
+   memorizzare l'istruzione.
+x: colonna dell'istruzione all'interno della matrice.
+y: riga dell'istruzione all'interno della matrice.
+        In cui è memorizzato l'indice dell'istruzione.
+Din: word contenente la parte dinamica dell'istruzione.
+Naturalmente se l'istruzione ha solo un byte di parte
+dinamica, oppure 0 bytes di parte dinamica, allora saranno
+significativi solo il byte meno significativo, oppure
+l'intero argomento non sarà significativo.
+OUTPUT:
+TRUE:  se l'assemblaggio è stato effettuato correttamente.
+FALSE: se l'assemblaggio non è stato realizzato ad esempio per
+  motivi di mancanza di spazio in memoria.
+Altre variabili:
+i: contatore.
+Analisi.
+Questa routine è la primitiva di assemblaggio, interaggendo direttamente con la memoria di assemblaggio. Essa memorizza in memoria di assemblaggio i bytes di opcodes e gli eventuali bytes degli operandi di un'istruzione. I bytes d'opcode vengono prelevati dalla matrice. Infatti conoscendo la posizione all'interno della matrice del dell'indice dell'istruzione da assemblare si può ricavare la posizione dell'elemento all'interno del vettore e da quest'ultimo si possono ricavare i bytes degli opcodes, inoltre si possono conoscere se sono presenti eventuali bytes di parte dinamica, e in che numero. Tali bytes vengono passati come argomento della funzione (DIN).
+Gli opcodes e gli operandi costituiscono un «pacchetto» di bytes che viene trsferito nel giusto ordine in memoria a partire dall'indirizzo MemInd. Se si verificano casi d'errore (mancanza di spazio libero in memoria di assemblaggio) allora l'assemblaggio si blocca e viene segnalato l'evento alla routine chiamante restituendo il valore FALSE. Altrimenti se l'operazione ha avuto buon esito viene restituito il valore TRUE.
+HandleDirective
+Descrizione: Verifica se una linea di codice sorgente rappresenta una direttiva di compilazione, e in caso affermativo si occupa della sua gestione.
+Tipo: funzione.
+INPUT:
+strcom: stringa contenente una linea di codice sorgente
+   compattata (senza spazi e contenente solo lettere
+   maiuscole).
+MemInd: indirizzo della memoria di assemblaggio.
+OUTPUT:
+TRUE:  la linea rappresenta una direttiva di assemblaggio, e la
+        routine si occupa della sua gestione. L'assemblatore
+  procederà nell'elaborazione dalla prossima linea di
+  codice.
+FALSE: la linea di codice non rappresenta una direttiva di
+   assemblaggio, il compito di elaborarla spetta
+  all'assemblatore.
+Altre variabili:
+str: stringa contenente i primi bytes della linea che dovrebbero
+indicare la direttiva.
+len: lunghezza della linea di sorgente.
+errore: contiene un eventuale valore di errore della routine VAL.
+w: eventuale nuovo indirizzo di assemblaggio.
+Analisi.
+Le direttive di assemblaggio sono comandi (contenuti nei files sorgenti) per l'assemblatore. Informano l'assemblatore (tramite la routine HandleDirective) di gestire quella determinata linea di codice non come contenente istruzioni da compilare, ma comandi che modificano il funzionamente dell'assemblatore stesso oppure i valori contenuti della memoria di assemblaggio.
+Le direttive attualmente supportate sono:
+-ORG nn
+-DB n1, n2, n3, n4. n5, ...
+-DW nn1, nn2, nn3, nn4, nn5, ...
+La direttiva ORG specifica all'assemblatore un nuovo indirizzo di memoria in cui andranno memorizzate le istruzioni. Nel caso che la prima linea di codice contenga proprio questa direttiva, l'indirizzo specificato (nn) rappresenta l'indirizzo di partenza per la compilazione e prevale su quello specificato in modo interattivo dall'utente sulla linea comando. Questa routine risulta utile nel caso in cui il codice risulta frammentato in memoria, in modo da utilizzare un solo file sorgente al posto di molti files. Un altro vantaggio è che i dati sull'indirizzo di partenza viene «incapsulato» nel file sorgente, in modo statico evitando di doverlo riscrivere ogni volta.
+Facendo ciò inoltre si evita di caricare ad un indirizzo sbagliato una routine non rilocabile. Cioè che è stata progettata per risiedere ad una determinata locazione di memoria.
+La direttiva DB serve ad inserire in memoria K bytes. Questa direttiva risulta utile nel caso si voglia inserire in memoria un segmento dati, oppure delle variabili.
+La direttiva DW è la duale di DB. Infatti i dati da inserire in memoria non sono bytes ma words.
+La routine HandleDirective gestiste direttamente la direttiva ORG, mentre DB e DW vengono gestite dalle omonime routines.
+DB
+Descrizione: Gestisce la direttiva DB, per l'inserimento di n bytes in memoria di assemblaggio.
+Tipo: procedura.
+INPUT:
+MemInd: indirizzo di memoria in cui inserire gli n bytes.
+str: strimga contenente la direttiva.
+OUTPUT:
+ Memoria di compilazione modificata.
+Altre variabili:
+lun: lunghezza della stringa STR contenente i bytes da inserire
+in memoria.
+c: inizio della sottostringa di STR rappresentante un byte da
+   inserire in memoria.
+i: posizione dell'attuale carattere elaborato nella stringa STR.
+num: sottostringa di STR rappresente un byte da inserire in
+     memoria.
+b: byte da inserire in memoria.
+errore: eventuale errore durante l'esecuzione di VAL.
+hex: variabile di comodo utilizzata per stampare i valori
+     numerici in esadecimale.
+col, riga: colonna e riga del cursore sullo schermo.
+ Utilizzati per ottimizzare l'output su schermo.
+Analisi.
+La direttiva DB ha la seguente sintassi:
+DB n1, n2, n3, n4, ...
+In cui n1, n2, n4, n4, ... sono i k bytes da inserire in memoria.
+DW
+Descrizione: Gestisce la direttiva DW, per l'inserimento di n words in memoria di assemblaggio.
+Tipo: procedura.
+INPUT:
+MemInd: indirizzo di memoria in cui inserire le n words.
+str: strimga contenente la direttiva.
+OUTPUT:
+ Memoria di compilazione modificata.
+Altre variabili:
+lun: lunghezza della stringa STR contenente le words da inserire
+in memoria.
+c: inizio della sottostringa di STR rappresentante una word da
+   inserire in memoria.
+i: posizione dell'attuale carattere elaborato nella stringa STR.
+num: sottostringa di STR rappresente una word da inserire in
+     memoria.
+w: word da inserire in memoria.
+errore: eventuale errore durante l'esecuzione di VAL.
+hex: variabile di comodo utilizzata per stampare i valori
+     numerici in esadecimale.
+col, riga: colonna e riga del cursore sullo schermo.
+ Utilizzati per ottimizzare l'output su schermo.
+Analisi.
+La direttiva DW ha la seguente sintassi:
+DW nn1, nn2, nn3, nn4, ...
+In cui nn1, nn2, nn4, nn4, ... sono le k words da inserire in memoria.
+Loop principale dell'assemblatore
+LoopASM
+Descrizione: Loop principale di assemblaggio.
+Tipo: funzione.
+INPUT:
+fp: file di testo contenente il programma sorgente in assembly.
+MemInd: Indirizzo di memoria in cui memorizzare il codice LM Z80.
+OUTPUT:
+ -Numero di linee assemblate (restituito dalla funzione).
+ -Memoria di compilazione modificata.
+Altre variabili:
+line: linee assemblate, intero.
+resasm: variabile BOOL che indica con TRUE il riuscito
+   assemblaggio, e con FALSE la condizione opposta.
+res: risultato di HandleDirective. Indice con:
+TRUE: la linea contiene una direttiva di compilazione.
+                L'ASM continuerà dalla prossima linea.
+FALSE: la linea non contiene una direttiva di compilazione.
+  L'ASM si occuperà della sua gestione.
+ind: indice della riga all'interno della matrice dell'istruzione
+elaborata. E' il risultato della funzione RicercaOpc, ed
+assume valore zero nel caso in cui l'istruzione non è stata
+trovata.
+hex: stringa di comodo utilizzata per stampare i valori numerici
+in esadecimale.
+lun: lunghezza della stringa STR contenente i bytes da inserire
+in memoria.
+c: inizio della sottostringa di STR rappresentante un byte da
+   inserire in memoria.
+i: posizione dell'attuale carattere elaborato nella stringa STR.
+num: sottostringa di STR rappresente un byte da inserire in
+     memoria.
+b: byte da inserire in memoria.
+errore: eventuale errore durante l'esecuzione di VAL.
+hex: variabile di comodo utilizzata per stampare i valori
+     numerici in esadecimale.
+strcom: stringa sorgente compattata.
+strsta: stringa contenente la parte statica dell'istruzione.
+strdin: stringa contenente la parte dinamica dell'istruzione.
+buffer: stringa che contiene una linea del file sorgente.
+i: contatore.
+din: word contenente l'eventuale parte dinamica di un'istruzione.
+w: word di comodo per il salvataggio temporaneo di MemInd.
+riga: riga corrente del cursore. Utilizzata per migliorare
+ l'output su schermo.
+Analisi.
+Questa routine rappresenta il cuore dell'assemblatore effettuando il vero e proprio assemblaggio.
+Essa avendo in INPUT il file sorgente, effettua l'assemblaggio, generando in memoria di compilazione i bytes di LM.
+La routine è il fulcro dell'assemblatore perché richiama direttamente o indirettamente tutte le routines fin qui esaminate.
+Il programma non è altro che un assemblatore di linea, assemblando una linea di codice sorgente indipendentemente dall'altra. Quindi la routine è strutturata come un enorme ciclo che elabora di volta in volta una sola linea di codice. Il ciclo continua finché il file sorgente non è terminato, oppure non si sono verificati errori nell'assemblaggio, o finché un'istruzione trovata nel file sorgente non è presente nella matrice. Quando si verifica una sola di queste condizioni il ciclo termina.
+La prima operazione è quella di leggere una linea dal file sorgente memorizzandola nel variabile BUFFER. Tale linea di codice sorgente viene compattata (strcom). Successivamente si effettua la ricerca all'interno della matrice dell'istruzione (tramite RicercaOpc). Dato che non sappiamo se questa istruzione ha o no parte dinamica la cerchiamo prima nella riga 0 della matrice che contiene tutte le istruzioni senza parte dinamica. Se l'esito è negativo allora significa che l'istruzione ha parte dinamica ed allora si scinde la parte dinamica dalla parte statica (tramite ScindeSTR). E si cerca la parte statica nella riga 1 (1-byte di parte dinamica) e poi nalla riga 2 (2-byte di parte dinamica). Se l'istruzione non è presente in nessuna delle tre righe allora il ciclo termina con un errore.
+Altrimenti si procede alla conversione della parte dinamica da stringa in formato numerico (din) e si passano i dati fin qui trovati alla routine Assemblaggio che effettua materialmente l'operazione di assemblaggio. Tramite infatti l'indirizzo della memoria di compilazione dove andrà memorizzata l'istruzione, la posizione all'interno della matrice dell'istruzione, e della eventuale parte dinamica è possibile ricavare il codice LM dello Z80. Nel caso in cui l'assemblaggio ha avuto buon esito, allora si incrementa il numero di linee compilate (LINE), e si stampa su terminale l'indirizzo attuale di compilazione seguito dai bytes del codice LM (tutto espresso in esadecimale) ed infine il codice sorgente. Questo per dare all'utente modo di verificare l'andamento della compilazione.
+Fatto ciò il ciclo riprende.
+Codifica disassemblatore.
+La codifica del disassemblatore è stata razionalizzata in modo da dividere le routines realizzate in tre categorie:
+-Routines di supporto di primo livello.
+-Routines di supporto di secondo livello.
+-Loop principale del disassemblatore.
+Come si vede una divisione molto simile a quella realizzata con l'assemblatore.
+Organigramma Disassemblatore.
+Come per l'assemblatore, anche per il disassemblatore è mostrato l'organigramma.
+  Main --> LoopDSM --> WTOH    --> BTOH
+    --> RicercaIsr
+    --> Disassemblatore --> BTOH
+    --> WTOH  --> BTOH
+Routines di supporto di primo livello.
+Le routines di supporto di primo livello sono identiche sia per l'assemblatore che per il disassemblatore.
+C'è da notare comunque lo scarso utilizzo di routines di elaborazione delle stringhe per quanto riguarda il disassemblatore. Infatti tale tipo di routines non vengono utilizzate dal DSM. Le uniche routines utilizzate sono:
+-BTOH
+-WTOH
+Per giunta la routine BTOH già è stata analizzate per l'assemblatore quindi non ci resta che analizzare WTOH.
+WTOH.
+Descrizione: Converte una word, in una stringa numerica equivalente in base esadecimale.
+Tipo: Funzione.
+INPUT:
+num: word da convertire.
+OUTPUT:
+stringa numerica esadecimale equivalente alla word d'ingresso.
+Routines di supporto di secondo livello.
+Tali routines eseguono i seguenti compiti:
+-Ricerca di un'istruzione all'interno del vettore del DB.
+-Disassemblaggio di una singola istruzione.
+Sono quindi routines abbastanza complesse, che vengono utilizzate dal loop principale del programma per effettuare il disassemblaggio. La complessità di tali routines fa in modo che il loop principale abbia una struttura più semplice.
+I compiti sopra elencati vengono realizzati rispettivamente da:
+-RicercaIsr.
+-Disassemblatore.
+RicercaIsr
+Descrizione: Ricerca, all'interno del vettore del Record, il record associato agli opcodes specificati come argomento della routine. Utilizza il metodo di ricerca specificato nell'apposito paragrafo.
+Tipo: Funzione.
+INPUT:
+opcode: vettore contenente i quattro bytes necessari per
+   contenere gli eventuali tre opcodes per la ricerca.
+OUTPUT:
+posizione, all'interno del vettore, del record contenente i dati
+dell'istruzione. Se l'opcode non è trovato la routine restituisce
+il valore zero.
+Altre variabili:
+i, c, f: variabili utilizzate per ricercare i nuovi valori di
+    inizio e fine di una sottolista di istruzioni aventi i
+   primi opcodes uguali..
+inizio: indice che rappresenta il limite inferiore della ricerca.
+fine: indice che rappresenta il limite superiore della ricerca.
+meta: indice che rappresenta l'elemento esaminato.
+res: risultato della ricerca.
+Analisi.
+Il metodo di analisi è stata analizzato nell'apposito paragrafo.
+Disassemblatore.
+Descrizione: Primitiva che effettua il dissassemblaggio di una singola istruzione LM.
+Tipo: Funzione.
+INPUT:
+MemInd: Indirizzo di memoria (virtuale) in cui è contenuto
+   l'istruzione da disassemblare.
+x: indice dell'elemento, nel vettore del DB, in cui sono
+   contenuti i dati dell'istruzione da disassemblare.
+OUTPUT:
+TRUE:  il disassemblaggio è stato effettuato correttamente.
+FALSE: si sono verificati errori durante l'esecuzione della
+  routine (mancaza di memoria libera sufficiente).
+Altre variabili:
+w: word per effettuare il salvataggio temporaneo di MemInd.
+c: contatore.
+i: contatore utilizzato per migliore l'output.
+b: variabile utilizzata per le istruzioni speciali della seconda
+   categoria. Viene utilizzata per ricavare dal quarto byte la
+   parte dinamica tramite operazioni di mascheramento e di SHIFT.
+ex: stringa utilizzata per la stampa esadecimale dei valori
+    numerici.
+line: stringa contenente l'output del DSM. Rappresenta una linea
+ di codice sorgente assembly.
+din: word contenente la parte dinamica dell'istruzione.
+bline: stringa utilizzata per fondere la parte statica e la parte
+  dinamica.
+lun: lunghezza della stringa bline.
+Analisi.
+Questa routine esegue il compito di disassemblare un'istruzione Z80.
+Per realizzare ciò utilizza i dati prelevati dal DB per quanto riguarda la parte statica, e i dati prelevati dalla memoria virtuale per quanto riguarda la parte dinamica.
+Le operazioni di tale routine riguardano principalmente funzioni di elaborazione di stringhe, utilizzate per ottenere il giusto posizionamento dei vari elementi che formano una riga generata dal DSM. La routine copia in LINE (che conterrà il risultato dell'elaborazione) l'indirizzo di memoria da dove è stata prelevata l'istruzione LM, seguita dai vari bytes che formano l'istruzione. Tutto espresso in esadecimale.
+Successivamente genera la vera e propria istruzione assembly. Per far ciò verifica se nell'istruzione è presente una parte dinamica. In caso negativa ricopia pari pari la parte statica dal record del DB nella variabile LINE. Altrimenti verifica se la parte dinamica è divisa in due operandi. In caso affermativo ricopia nella variabile LINE prima la parte dinamica del secondo operando e poi e quella del primo. Se la parte dinamica rappresenta un solo operando allora si inserisce questo all'intero della stringa. Naturalmente i casi più semplici da gestire sono il primo e l'ultimo.
+Nel caso in cui l'istruzione è speciale ed appartiene alla seconda categoria allora si ricava il secondo operando tramite operazioni di SHIFT e mascheramento.
+Alla fine del processo la variabile LINE è stampata su terminale.
+LoopDSM
+Descrizione: Loop principale del disassemblatore.
+Tipo: Funzione.
+INPUT:
+IndSorg: Indirizzo da cui partire il disassemblaggio.
+NumStart: Numero di bytes da disassemblare.
+OUTPUT:
+-Numero di linee assembly generate (valore restituito dalla
+funzione).
+-Visualizzazione sullo schermo delle istruzione assembly
+Altre variabili:
+buffer: vettore contenente i cinque bytes prelevati dalla memoria
+   necessari per il disassemblaggio.
+opc: vettore contenente i quattro bytes necessari per contenere i tre bytes di codice operativo dell'istruzione. Per
+istruzione con meno di tre bytes di codice operativo oppure
+che non appartengono alle due categorie di istruzioni
+speciali allora sono significativi solo una parte degli
+elementi.
+NumLines: numero di linee decompilate.
+NumBytes: numero di bytes che rimangono da disassemblare.
+err: flag di errore, vale TRUE se la memoria di decompilazione è
+terminata.
+res: risultato della routine RicercaIsr. Contiene l'indice
+dell'elemento nel vettore del DB, contenente i dati
+dell'istruzione cercata. Vale zero se non è stata trovata
+l'istruzione.
+i: contatore.
+line: stringa utilizzata per generare una linea standard per le
+ istruzioni non trovate nel DB.
+MemInd: indirizzo di memoria dell'istruzione attualmente
+   disassemblata.
+w: word utilizzata per salvare il valore di MemInd.
+lun: lunghezza di LINE, utilizzata per ottimizzare l'output su
+schermo.
+Analisi.
+Questa routine rappresenta il cuore del disasemblatore.
+Avendo in ingresso l'indirizzo di memoria virtuale che si desidera disassemblare ed il numero di bytes di disassemblare, genera le equivalenti linee in linguaggio assembly del contenuto della memoria virtuale. Il numero di bytes da disassemblare viene arrotondato in eccesso in modo da generare anche l'ultima linea. Così che se si chiede di disassemblare 10 bytes e le linee ottenute sono composte da istruzioni di 5,3,4 bytes abbiamo che l'ultima riga viene ugualmente visualizzata perché si arrotonda NumBytes a 12.
+La routine in se stessa non realizza compiti estremamente complessi, delegando la maggior parte dei compiti alle routines di supporto di secondo livello. Infatti essa utilizza la routine RicercaIsr per ricercare all'interno del DB il record contenente i dati dell'istruzione attualmente elaborata. Ed utilizza la routine Disassemblatore per realizzare materialmente il disassemblaggio per la creazione della riga da visualizzare.
+La struttura di questa routine non è altro che quella di un enorme loop, che viene ripetuto finché non terminano i bytes da disassemblare. In ogni iterazione tale loop carica dalla memoria di compilazione (memoria Virtuale) i cinque bytes necessari per l'elaborazione. Utilizza quattro di questi bytes come presunto opcode per la ricerca all'interno del DB. Successivamente in base al record trovato esclude parte di questi quattro bytes per utilizzarli come bytes dati, oppure eventualmente utilizza una parte dei rimanenti  bytes prelevati dalla memoria.
+In ogni modo l'indice all'interno del DB del record dell'istruzione elaborata, insieme agli eventuali bytes di parte dinamica rappresentano un pacchetto d'informazioni che vengono inviate alla routine Disassemblatore per realizzare l'effettiva generazione dell'output. C'è da notare che anche se la suddetta routine realizza la decompilazione, c'è una caso in cui tale operazione viene svolta dal loop principale. E' il caso in cui la routine RicercaIsr ha dato esito negativo. Quindi il primo byte dell'opcode prelevato dalla memoria non è valido, forse perché indica un byte di dato. In questo caso la routine genera automaticamente una riga standard della forma:
+IIII n1 ???
+che viene generata grazie all'utilizzo della variabile LINE.
+Questo caso già è stato analizzato nell'apposito paragrafo.
+Fatto ciò il ciclo ricomincia.
+Analisi del programma principale.
+Main
+INPUT:
+namesorg: nome fisico del file contenente il sorgente per l'ASM.
+STRsorg: stringa rappresentante l'INPUT da tastiera dell'utente.
+INDsorg: indirizzo di memoria virtuale da cui iniziare
+    l'elaborazione per l'ASM o il DSM.
+OUTPUT:
+numlines: valore di ritorno di LoopASM o LoopDSM. Indica
+rispettivamente: il numero di linee assemblate o
+disassemblate dal programma.
+Altre variabili:
+ASMsorg: nome logico del file contenente il sorgente per l'ASM.
+s: numero dell'elemento del menÙ selezionato.
+err: errore durante la conversione di formato di VAL.
+Analisi.
+Le funzioni svolte dal Main possono essere riassunte nei seguenti punti:
+-Inizializzazione della matrice e del vettore del DB tramite le routines di supporto InitVettore ed InitMatrice.
+-Apertura del file sorgente dell'ASM
+-Visualizzazione del menÙ con lettura e controllo della scelta dell'opzione effettuata dell'utente.
+-Richiamo delle routines LoopASM e/o LoopDSM per eseguire le operazioni di assemblaggio e disassemblaggio.
+-Visualizzazione dei risultati delle routines (NUMLINES).
+-Chiusura del file sorgente.
+Organigramma Main.
+Main --> InitVettore
+--> InitMatrice
+ --> LoopASM--> BTOH
+--> StrCpt
+--> ScindeStr     --> ATOW
+     --> Aggiusta
+--> Controllo_Sintassi
+--> RicercaOpc
+--> Assemblaggio    --> HandleDirective --> DB
+         --> DW
+--> LoopDSM    --> WTOH     --> BTOH
+     --> RicercaIsr
+     --> Disassemblatore --> BTOH
+     --> WTOH            --> BTOH
+
+Sviluppi futuri.
+Nell'attuale versione il programma difetta nei seguenti punti:
+-Interfaccia utente poco amichevole. Essa è una CLI (Command Line Interface: interfaccia linea comando), e sarebbe auspicabile la realizzazione o l'implementazione su di un sistema WIMP (Windows, Icons, MenÙ, Pointer: Finestre, Icone, MenÙ, Puntatore) ma basterebbe una qualsiasi GUI (Graphical User Interface: interfaccia utente grafica).
+-Comandi poco sviluppati: le operazioni che si possono effettuare sono l'assemblaggio e il disasseblaggio, sarebbe opportuno uno sviluppo di altre opzioni che permetterebbero all'utente una «vita» piÙ comoda.
+In futuro quindi si prevede di ovviare a questi difetti e di aggiungere la possibilità di mandare in esecuzione un programma Z80 presente in memoria virtuale. Si tratterà quindi di simulare il µP nell'esecuzione di una generica istruzione, con la possibilità di visualizzare, tramite dei grafici, quali compiti svolgono i vari elementi interni della CPU (bus, registri ad esempio) per l'esecuzione di quell'istruzione. Ciò sarebbe molto utile didatticamente, potendo lo studente vedere materialmente cosa accade all'interno di quella scatola nera durante l'esecuzione di un'istruzione. Gli attuali metodi di studio prevedono di visualizzare tramite dei grafi i valori dei pins interessati all'operazioni o, molto piÙ raramente, le operazioni svolte dagli elementi interni del µP. Ma ciò risulta molto scomodo.
+Files presenti su disco.
+AD.PAS:    programma principale.
+MATRICE.H:    matrice del DB.
+VETTORE.H:    vettore del DB.
+ASM.PAS:    assemblatore.
+DSM.PAS:    disassemblatore.
+AD.EXE:    eseguibile del programma.
+ESEMPIO1.ASM: esempio di file sorgente per l'ASM
+ESEMPIO2.ASM: esempio di file sorgente per l'ASM
+Nota su MATRICE.H E VETTORE.H.
+Questi files non contengono l'intero DB, ma solo una parte.
+Per motivi di tempo infatti non è stato possibili digitari i dati degli oltre 500 records necessari per la completa gestione di tutte le istruzioni dello Z80. E si è preferito digitare solo 16 records.
+In ogni caso le istruzioni memorizzate sono rappresentative di tutte le istruzioni dello Z80.
+Comunque non bastano piÙ di cinque minuti per implementare la gestione di una qualsiasi istruzione dello Z80.
+-  -

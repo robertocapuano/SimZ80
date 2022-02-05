@@ -1,0 +1,66 @@
+
+
+                 Assemblatore, disassemblatore di codice Z80.
+
+                                    Di
+                              Capuano Roberto,
+                            
+
+                Tesina di maturità per l'anno scolastico 1991/92.
+
+
+
+
+Introduzione.
+
+Lo scopo di questa tesina è di analizzare lo sviluppo di un software in grado effettuare le operazioni di assemblaggio e disassemblaggio di codice per il microprocessore Z80 della Zilog.
+Realizzare tale tesina ha richiesto un duro lavoro di molti mesi: per analizzare il problema, realizzare un algoritmo e codificarlo. Il frutto del nostro lavoro è un programma di una grande utilità didattica e aperto a future evoluzioni.
+In questo lavoro utilizzeremo indifferentemente le diciture CPU, µP, Z80 per indicare il microprocessore Z80 della Zilog. Utilizzeremo il termine Assembly per indicare il linguaggio assemblativo e il termine LM per indicare il linguaggio macchina del µP (è molto diffusa una dizione errata che tende a chiamare il linguaggio col termine Assembler, e il programma con assemblatore; ma chiaramente è una dizione errata). Infine utilizzeremo indifferentemente i termini assembler/assemblatore, e disassembler/disassemblatore per indicare le diverse operazioni di conversione.
+E' stato scelto come linguaggio per la codifica di tale simulatore il linguaggio Pascal, nel suo dialetto Turbo Pascal.
+
+Logica di programmazione.
+
+La programmazione di un programma complesso come un assemblatore o disasseblatore, in cui vi siano più persone a lavorare sullo stesso progetto ma a routine differenti può generare un certo numero di conflitti. Infatti capita molto spesso che nella progettazione di una routine si debba chiamare per un'operazione di servizio una routine realizzata da una altro programmatore. Se non si standardizza la tecnica di progettazione delle routines si rishia il caos, l'anarchia.
+Quindi il progetto richiede l'utilizzo di una teoria di base in modo da evitare il più possibile conflitti di programmazione.
+Abbiamo utilizzato quindi la tecnica delle scatole nere. Per tecnica delle scatole nere (black boxes) intendiamo una tecnica di progettazione delle routines. Esse andranno progettate in modo che i dati che la routine dovrà elaborare siano passati come argomenti della procedura. Se la routine dovrà restituire informazioni, queste andranno restituite come valore di ritorno di una funzione oppure andranno memorizzata negli argomenti della routine. Questi particolari argomenti saranno opportunamente passati per riferimento. La routine utilizzerà variabili locali per le sue operazioni interne, e potrà accedere alla variabili globali solo in lettura, cioè non le potrà modificare. Il compito di modificare le variabili globali spetta alla routines di inizializzazione e terminazione del programma.
+
+Cenni generali sulla natura del programma realizzato.
+
+Le operazioni di assemblaggio e disassemblaggio di codice non sono altro che operazioni di compilazioni. Esistono due grandi categorie di compilatori. I native-compiler ed i cross-compiler.
+Nei primi il codice prodotto verrà utilizzato (eseguito) su una macchina dello stesso tipo (è la normale operazione di compilazione di un programma su PC). Nei secondi il codice prodotto verrà eseguito su una macchina di differente tipo (ad esempio si compila il codice su PC per poi eseguirlo su Amiga). In questo caso il codice viene prodotto da un PC (architettura a 16-bit e/o 32-bit corrispondente alla classe di µP 80x86) e verrà eseguito su un computer munito di microprocessore Z80 (8-bit). Quindi si tratta di un'operazione di cross-compiling.
+La necessità di utilizzare dei cross-compiler sono molteplici; come ad esempio la non disponibilità della macchina su cui si utilizzerà il codice; oppure la poca potenza di quest'ultima. Quest'ultimo caso renderebbe troppo lenta la fase di programmazione.
+Per realizzare il cross-compiler dobbiamo simulare una macchina virtuale contenente una determinata quantità di memoria RAM. In questa memoria verrà memorizzato il codice prodotto dall'assemblatore. E da questa memoria verranno prelevati i dati per essere elaborati dal disassemblatore. Quindi si tratterà di definire una macchina virtuale dotata di una CPU (Z80) e di memoria RAM.
+La CPU in tale programma non è stata simulata ma lo sarà in una futura versione dello stesso. Mentre la memoria RAM simulata è di 65536 bytes (64 Kbyte).
+
+Formato dell'output dell'assemblatore e del disassemblatore.
+
+Il formato dell'uscita dell'assemblatore e del disassemblatore è comune. Esso rappresenta una generica riga di un programma assembly. Sia che questa sia stata generata assemblando un file sorgente, sia che si stia disassemblado locazioni di memoria virtuale, l'output è una riga che ha la generica forma:
+
+IIII b1 b2 b3 b4 b5 XXXXXXXXXXX
+
+In cui:
+IIII: rappresenta l'indirizzo di memoria virtuale che contiene
+      l'istruzione.
+b1, b2,..: rappresentano i bytes che formano l'istruzione LM. Naturalmente
+           per istruzioni aventi meno di 5 bytes, alcuni di questi
+           mancheranno. Questi bytes possono essere generati dall'ASM
+           oppure prelevati dalla memoria virtuale dal DSM.
+XXXX: rappresenta la stringa dell'istruzione assembly. Questo può essere
+      quella contenuto nel file sorgente passato all'assemblatore. O può
+      essere generata dal disassemblatore.
+
+Nel caso in cui l'istruzione elaborata non sia presente nel DB: i due programmi generano effetti diversi.
+L'ASM ferma il processo stampando la linea che ha generato l'errore.
+Il DSM visualizza una linea del tipo:
+
+IIII b1 ???
+
+In cui:
+IIII: è l'indirizzo di memoria virtuale in cui è stato trovata
+      l'istruzione sconosciuta.
+b1: il byte che rappresenta un opcode di un'istruzione sconosciuta.
+
+Dopo aver stampato questa linea il disasemblatore continua la fase di elaborazione.
+Questo diverso comportamento è generato dal fatto che per l'ASM un'istruzione sconosciuta viene generata generalmente da un errore sintattico. Continuare ad assemblare il programma significherebbe generare un listato in cui manca una linea. Ed un tale programma è di nessuna utilità (se non per verificare ulteriori errori), perché se mandato in esecuzione genererebbe un errore.
+Nel caso di un DSM un byte sconosciuto non deve necessariamente indicare un errore nel calcolo dell'opcode ma può indicare un eventuale byte di dato, che non verrà eseguito dal processore ma solo utilizzato per elaborazioni.
+

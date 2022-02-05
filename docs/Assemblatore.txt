@@ -1,0 +1,207 @@
+Definizione di assemblatore.
+
+Un assemblatore è quel programma che permette di trasformare un file sorgente, in ASCII rappresentante un programma in linguaggio assembly, in un codice oggetto (file contenente l'equivalente in linguaggio macchina ma ancora non eseguibile). L'assemblatore non è altro che un caso particolare di compilazione. In questo caso si tratta di un cross-compiler perché il codice prodotto dovrà essere eseguito su una diversa macchina (munita di µP Z80).
+Un compilatore trasforma un file sorgente, in codice ASCII e rappresentante un programma in un linguaggio ad alto livello, in un file oggetto (object file). Questo file oggetto contiene tutta una serie di riferimenti esterni ad oggetti esterni, detti appunto riferimenti esterni (external references). Questi riferimenti esterni sono memorizzati nel file oggetti utilizzando il nome dell'oggetto referenziato. Questo oggetto può essere una funzione in una libreria esterna, una variabile, un comando residente, ecc. E' evidente che finché tali riferimenti esterni non verranno risolti, il codice oggetto non potrà mai diventare eseguibile. Succesivamente il file oggetto, sia che venga prodotto dall'assemblatore o da un più generico compilatore, dovrà passare per la fase di linkaggio in cui verranno risolti i riferimenti esterni e verrà aggiunto il codice di caricamento (startup). La fase di link darà origine al file eseguibile. La principale differenza tra un assemblatore ed un compilatore è nella potenza delle istruzioni che i due tipi di linguaggi possono esprimere (linguaggi ad alto/basso livello). Un'istruzione in linguaggio assembly avrà una piccola potenza perché capace di eseguire semplici operazioni. Mentre un'istruzione in un linguaggio ad alto livello potrà eseguire operazioni molto complesse, risultando così più potente.
+Quindi in linea generale un assemblatore è molto più semplice da realizzare rispetto ad un compilatore di linguaggio evoluto, proprio per la scarsa potenza delle istruzioni da elaborare.
+
+Struttura dell'Assemblatore.
+
+Esistono di divesi tipi di assemblatori:
+Assemblatori di linea: Permettono di assemblare il programma generando l'opprtuno codice per il µP. Non offre altre caratteristiche che possano facilitare la programmazione (assemblano ogni linea indipendentemente dall'altra), né offrono editors interni. Il loro uso è particolamente scomodo.
+Monitors: racchiudono nello stesso programma sia l'assemblatore, il disassemblatore che l'editor. Permettono semplici operazioni sia nella programmazione (non offrendo nessuna particolare facilitazione) sia nei comandi di edit del testo.
+MacroAssemblatori: rappresentano lo stato dell'arte per i programmatori. Permetto complesse operazioni di programmazione come la definizione di costanti, macrocomandi, segmenti dati. Generalmente per la loro alta specializzazione non offrono l'editor, ma sono generalmente compatibili con i più famosi editors in commercio.
+
+Nell'ottica di tale divisione, il programma da noi realizzato è un assemblatore di linea. Che ricade quindi nella prima categoria di software.
+
+Introduzione alla realizzazione dell'assemblatore.
+
+Una sessione di lavoro su di un µP Z80 è costituita da diverse fasi:
+
+1) Creazione del programma in linguaggio Assembly Z80.
+2) Assemblaggio del programma.
+3) Correzione di eventuali errori con eventuale ripetizione del passo 2.
+4) Esecuzione del programma.
+5) Visualizzazione dei risultati.
+
+Alcune note:
+-La fase 1 e 2 possono essere evitate se si codifica il programma direttamente in linguaggio macchina.
+-Per visualizzazione dei risultati si intende sia la visualizzazione dei registri del µP, sia la visualizzazione di locazione di memoria in esadecimale o in linguaggio assembly tramite il disassemblatore.
+
+In questo capitolo analizzeremo il secondo punto del precedente «programma».
+Volendo porre il problema di realizzare l'assemblatore sistemisticamente, si tratterà di progettare un sistema che avendo in input una stringa ASCII contenente l'istruzione in assembly; dia in output una stringa di n bytes contenente la sua codifica in linguaggio macchina (LM).
+Si tratta di un'operazione di conversione. Un operazione che il computer è particolarmente portato a realizzare. L'enorme numero di casi in cui il sistema si può trovare di fronte, sia in input che in output, rende però necessaria una oculata scelta del metodo di risoluzione.
+Parlando in termini informatici la risoluzione del problema implica la definizione di una base di dati (data base) contenente i dati di ogni istruzione dello Z80 sia in formato assembly che in LM.
+
+Strutture dati per l'assemblatore.
+
+Tale basi di dati non deve essere troppo generica (il che diminuirebbe la dimensione dell'archivio ma renderebbe troppo complesso il calcolo dei bytes dell'istruzione) né troppo densa di informazioni (il che farebbe aumentare le dimensioni dell'archivio ma renderebbe d'altronde lenta la fase di ricerca delle istruzioni).
+IN termini informatici dovremo definire prima le entità e successivamente le proprietà di queste entità. Le entità sono le istruzioni dello Z80.
+Le propropietà di ogni entità «istruzione dello Z80» sono:
+
+1) Codifica della stringa alfanumerica rappresentante l'istruzione Assembly.
+2) Numero degli opcodes.
+3) Opcodes veri e propri.
+4) Numero e dimensione degli operandi.
+
+Nella risoluzione del problema abbiamo considerato le istruzioni (sia assembly che LM) divise in parte statica e in parte dinamica.
+Si definisce parte statica di un'istruzione quella parte (caratteri, opcodes) che non varia in funzione dell'operazione che l'istruzione andrà ad eseguire ma rimane uguale per tutta una classe di istruzioni.
+Si definisce parte dinamica di un'istruzione quella parte (numerica) che risulta variabile.
+Per esempio consideriamo l'istruzione assembly:
+
+                                    LD A,13
+
+la cui codifica LM è 10 13. La parte statica in assembly è "LDA," mentre in LM è 10. La parte dinamica per entrambe vale 13.
+C'è da considerare che per stringa assembly statica si intende sempre una stringa ottimizzata: senza spazi ed espressa in lettere maiuscole.
+
+I dati sopra menzionati sono stati «impacchettati» nel seguente RECORD Pascal:
+
+OpcRec = RECORD
+         OPCSTR: string[12];
+         OPCNUM: 1..3;
+         OPCARR: array[1..3] of byte;
+         DINNUM: -1..2;
+End;
+
+Giustifichiamo queste scelte.
+OPCSTR rappresenta la stringa statica dell'istruzione assembly. La dimensione di 12 elementi non è stata casuale, infatti è stata scelta considerando l'istruzione ... che ha la massima lunghezza della stringa statica (...) che è di ... caratteri.
+OPCNUM rappresenta il numero di bytes d'opcode per l'istruzione memorizzata.
+Il massimo numero di bytes d'opcode per istruzione dello Z80 è 3. E' quindi chiaro l'ampiezza del SUBRANGE (1..3).
+OPCARR contiene i bytes d'opcode per l'istruzione. C'è da notare che la lunghezza di quest'array è di 3 elementi in base alle precedenti considerazioni su OPCNUM. Però non tutte le istruzioni hanno 3 bytes d'opcode. Quindi il numero di bytes significativi per OPCARR sarà contenuto proprio in OPCNUM.
+DINNUM rappresenta il numero di bytes per la parte dinamica dell'istruzione (operando), esso assume valori da 0 (nel caso in cui l'istruzione non abbia operandi) a 2 (massimo numero di bytes per la parte dinamica). Il valore -1 indica che la parte dinamica è di 2 bytes ma rappresenta due operandi p.e.: LD (IX+b1), b2.
+Ogni record OpcRec rappresenta un elemento della base di dati. Il problema che ora sorge è quello di scegliere una opportuna struttura al data base (DB) e di scegliere una opportuna chiave di ordinamento, in modo da facilitare le operazioni di ricerca. Parlando in termini informatici si deve trovare una relazione tra i vari records, cioè i flussi che collegano le informazioni.
+Per la base di dati abbiamo scelto la struttura di una matrice di 3 righe e 128 colonne. Ogni riga contiene una diversa classe di istruzioni. Abbiamo deciso di dividere le istruzioni in base al numero di bytes di parte dinamica. Una istruzione dello Z80 può avere 2-byte, 1-byte, 0-byte di parte dinamica. Per questa ragione la matrice è di tre righe. Nella prima riga andranno le istruzioni con non hanno parte dinamica, nella seconda riga le istruzioni con un byte di parte dinamica e la terza riga le istruzioni con due bytes di parte dinamica che possono rappresentare uno o due operandi.
+Questo metodo permette di dividere il data base in un modo molto razionale.
+Questa scelta è stata motivata anche da altre ragioni.
+Infatti per parte dinamica intendiamo quella parte numerica dell'istruzione che una volta convertita in binario andrà aggiunta dopo gli opcodes in memoria. Ci sono infatti istruzioni che pur avendo una parte numerica, quest'ultima non dovrà essere elaborata come parte dinamica.
+Consideriamo l'istruzione:
+
+                               LD HL, C000
+
+il cui equivalente LM è 2100C0. Come si può notare la parte dinamica dell'istruzione (00C0) è stata aggiunta subito dopo l'opcode (20).
+Consideriamo invece l'istruzione:
+
+                                 BIT 1,A
+
+il cui equivalente LM è CB4F.
+Della parte dinamica dell'istruzione (1) non vi è traccia nell'istruzione. Questo perché esso è stata codificata nel secondo byte dell'opcode in modo da risparmiare spazio in memoria.
+Quindi è chiaro che per una corretta elaborazione bisogna considerare questa istruzione come non avente parte dinamica.
+Volendo considerare la precedente istruzione come avente parte dinamica, bisognerebbe sviluppare un algoritmo capace di modificare l'opcode in funzione del tipo di istruzione. Quindi capace di considerare come un caso unico le istruzioni:
+
+                                BIT 1,A = CB4F
+
+                                BIT 2,A = CB57
+
+in un generico caso:
+
+                                BIT x, A = CByy
+
+Dovrebbe cioè essere capce di generare il secondo byte dell'opcode. Ciò permetterebbe di compattare il DB ma renderebbe molto più lenta l'elaborazione. La cosa è resa complicata dal fatto che la codifica del secondo byte è particolarmente complessa.
+Ogni istruzione BIT inizia con il byte CB. Il secondo byte ha la generica forma in binario:
+
+                                   01nnnrrr
+
+In cui:
+01:  costante, rappresenta il tipo di operazione.
+nnn: variabile, rappresenta il bit da provare.
+rrr: variabile, rappresenta il registro il cui bit va provato.
+
+Se è vero che codificare tale serie di informazioni non è eccessivamente complicato per un'istruzione, è pur vero che eseguire tale operazione per le centinaia di istruzioni dello Z80 è un compito davvero oneroso.
+Per queste ragioni abbiamo deciso di considerare come parte dinamica solo quella parte numerica dell'istruzione che una volta codificata andrà aggiunta semplicemente in coda agli opcodes.
+Quindi l'istruzione:
+
+                                     BIT 1, A
+avrà come parte statica:
+
+                                     "BIT1,A"
+
+e non avrà parte dinamica.
+Il problema che ora sorge è come fare a riconoscere le istruzioni in cui la parte numerica non rappresenta parte dinamica ma quella statica. Cioè come facciamo a riconoscere l'istruzione "LDA,10" da "BIT1,A"? La soluzione ci è data dalla stessa struttura che abbiamo dato al DB in cui ogni riga rappresenta una diversa classe di istruzioni (senza, con 1 o 2 bytes di parte dinamica).
+Quindi in generale andremo a cercare l'istruzione prima nella lista delle istruzioni senza parte dinamica, e poi nelle altre due. Considerando poì che sono statisticamente più utilizzate le istruzioni che non hanno parte dinamica perché risultato molto veloci, in contrapposizione con le istruzioni con 2 bytes di parte dinamica che sono quelle più lente e più rare da incontrare è chiaro che tale soluzione risulta ottimale.
+Non resta da scegliere che il tipo di ricerca da effettuare. In primo luogo la chiave di ricerca è la stringa statica compattata dell'istruzine. Per quanto riguardo l'algoritmo allora potremmo scegliere un tipo di ricerca sequenziale (in cui scandiamo in successione ogni elemento di ogni riga). Ma risulta preferibile un tipo di ricerca binaria, per la sua rapidità e semplicità.
+C'è da notare che potremmo utilizzare un tipo di ricerca random utilizzando una memorizzazione dei records tramite una tecnica HASH, ma ciò risulterebbe troppo oneroso in termini di tempo e memoria e risulterebbe di una certa difficoltà in fase di implementare. Quindi esulerebbe dallo scopo di questa trattazione che ricordiamo ha un fine didattico.
+
+Analisi generale dell'assemblatore.
+
+Per assemblare necessitano almeno due informazioni: il codice sorgente e l'indirizzo in cui memorizzare tale codice.
+Ogni linea del codice viene assemblato indipendentemente dall'altra. Quindi assemblare una linea, cento, o nessuna non fa cambiare nulla nell'analisi del procedimento. Quindi per spiegare il procedimento risolutivo immagineremo di assemblare una generica linea di codice.
+Una piccola premessa. La compilazione di una istruzione di un linguaggio di programmazione necessita di almeno tre fasi di elaborazione:
+-una fase di controllo semantico, per verificare il corretto significato delle istruzioni.
+-Una fase di controllo lessicale-ortografico per verificare che quelle determinate istruzione, corrette sintatiticamente, esistano sul serio.
+Quindi bisogna definire o per meglio dire (dato che già hanno pensato a questo gli ingegneri della Zilog) cercare un certo numero di regole (controlli) che siano il più generico possibile in modo da verificare immediatamente se un'istruzione è errata.
+
+Definizione delle regole di controllo di una istruzione.
+
+Se per alfabeto intedessimo l'insieme dei simboli grafici che vengono usati per esprimere una idea e per linguaggio di programmazione una vera e propria lingua; allora avremo che il linguaggio (lingua) Assembly Z80 ammette come alfabeto per esprimere le proprie istruzioni (termini) il seguente insieme di 26 simboli:
+
+                   {ABCDEFHIJLMNOPRSTXYZ01234567890+, ()'}
+
+con cui possiamo esprimere qualsiasi istruzione di questo linguaggio
+Se poi andassimo a definire  l'alfabeto del linguaggio macchina Z80 allora in formato binario esso sarebbe formato solo da due simboli:
+
+                                    {0,1}
+
+mentre in formato decimale da 10 simboli:
+
+                            {0,1,2,3,4,5,6,7,8,9}
+
+Quanti sono necessari per esprimere ogni istruzione LM dello Z80.
+Quindi un primo controllo sulla correttezza di una istruzione è quello di verificare se i caratteri ASCII che compongono la stringa facciano parte dell'alfabeto dell'assembly Z80.
+Un secondo controllo è di tipo semantico per vericare che anche se i simboli sono corretti questi siano «disposti» in un ordine corretto.
+Ad esempio non ha senso scrivere:
+
+                              LD A+,30
+oppure:
+
+                              LD )(,30
+
+Quindi si dovranno definire tutta una serie di controlli a cui sottoporre la stringa.
+Sistemisticamente parlando si dovrà definire una macchina a stati o in modo più preciso un automa improprio in cui:
+-l'ingresso è rappresentato da ogni singolo carattere della stringa.
+-l'uscita è rappresentata da un valore booleano che indica la detezione di un errore nell'istruzione.
+La definizione della variabile stato è necessaria perché per verificare se l'n-simo carattere contiene un errore, bisogna tenere in considerazione anche il carattere n-1. In particolari tipi di errori (parentesi aperta senza una corrispondente parentesi chiusa) bisogna non solo tenere in considerazione il carattere immediatamente precedente ma un generico e «distante» carattere precedente.
+
+Andremo quindi a controllare 5 classi di errori specifici, più uno generico.
+1) Parentesi aperta.
+2) Parentesi chiusa.
+3) Segno più.
+4) Segno virgola.
+5) Segno apice singolo.
+Il sesto controllo è per verificare che per uno stesso operando le cifre non precedano le lettere, ad esempio:
+
+LD1A,30
+LD34A3,30
+
+non sono corrette mentre:
+
+JP3000
+DJNZ60
+
+sono corrette.
+
+N. B.: Si presuppone che gli operandi numerici vengano espressi sempre in formato decimale. Perché altrimenti scegliendo il formato esadecimale le prime due istruzioni sarebbero corrette, esprimendo dei normali numeri in base sedici.
+
+In generale i 5 controlli specifici vanno a verificare che due o più simboli non siano adiacenti. Ciò generalmente è un caso d'errore (eccetto naturalmente il caso nel quale la parentesi chiusa è seguita da una virgola). Oppure vanno a verificare che non si utilizzi per la stessa istruzione lo stesso simbolo due volte. Ad esempio nessuna istruzione utilizza per due volta la virgola o una parentesi aperta o due segni più.
+In particolare vanno eseguiti i seguenti controlli:
+-Se il carattere n-simo è una parentesi tonda aperta, si va a verificare se già è stata aperta una parentesi, in caso affermativo si tratta di un errore.
+-Se il carattere n-simo è una parentesi tonda chiusa, si va a verificare se non è stata aperta una parentesi tonda oppure se già è stata chiusa una parentesi tonda, oppure che il carattere immediatamente precendete (n-1) è una parentesi aperta. In tutti questi casi si tratta di un errore.
+-Se il carattere n-simo è un segno più allora si verifica se è già stato utilizzato tale simbolo, oppure che il carattere precedente non sia alfanumerico. In questi casi si tratta di errore.
+-Se il carattere n-simo è una virgola si va a verificare che non sia stato già utilizzato tale simbolo oppure l'apice, oppure che il carattere precedente sia una parentesi aperta. In questi casi si trtta di errore.
+-Se il carattere n-simo è un apice si va a verificare se è gia stato utilizzato tale simbolo, oppure che il carattere precedente sia numerico. In questi casi si tratta di errore.
+
+Generalizzando questi dati otterremo che in una generica istruzione dello Z80 possono essere presenti solo per una volta i simboli di virgola, apice e parentesi. Per giunta il simbolo di apice non precede mai quello di virgola. Il simbolo di parentesi chiusa non precede mai quello di parentesi aperta. Inoltre non possono succedersi nell'ordine i simboli virgola-parentesi aperta, oppure apice-virgola, oppure carattere numerico-apice.
+Costituisce inoltre errore il caso in cui una stringa sia presente solo il carattere parentesi aperta senza il corrispondente simbolo di parentesi chiusa.
+Detti così questi dati possono sembrare senza senso, quindi diamo una motivazione a questi aridi dati.
+Tali scelte vennero prese da parte della Zilog per evitare casi senza senso oppure per evitare istruzioni troppo complesse. Del primo caso fanno parte ad esempio il caso cifra-apice oppure cifra-lettera. Per comprendere il secondo caso basta considerare che in una istruzione il simbolo più viene utilizzato per indicare un indirizzamento indicizzato. Quindi due simboli più indicano che si può usare per due volte tale tipo di indirizzamento cioè sia per il sorgente che per la destinazione, ma renderebbe l'istruzione troppo complessa. Allo stesso modo permettere che in una istruzione siano presenti due simboli virgola o due serie di parentesi aperta/chiusa indicano rispettivamente che si possono utilizzare tre operandi per istruzione nel primo caso, e per due volte un indirizzamento a scelta tra diretto e indicizzato nel secondo. Tutto ciò renderebbe troppo complessa l'istruzione da eseguire dal µP.
+Il simbolo di apice non può precedere quello di virgola perché l'apice indica un registro del set alternativo, e si è scelto di utilizzare tali registri solo come secondo operando. Tali regole sono state dedotte da uno studio statistico approfondito delle tabelle delle istruzioni dello Z80.
+
+Analisi Assemblaggio di una linea di codice.
+
+Immaginiamo di aver dato in input all'Assemblatore una linea di codice Assembly, vale a dire una stringa.
+Il programma «non sa nulla» di questa stringa. Potrebbe tanto indicare una istruzione, tanto l'indirizzo del pizzaiulo all'angolo. Ed ancora di più, può darsi che la stringa indichi un'istruzione, ma gli operandi siano errati.
+Quindi il programma per «difendersi» da queste condizioni di errore deve eseguire una certa serie di operazioni.
+Ma andiamo per ordine. Come dicevo prima, immaginiamo di dare in «pasto» all'assemblatore una linea di codice, che d'ora in poi chiameremo stringa sorgente (SOURCE STRING).
+La prima operazione che l'assembler esegue è di ottimizzare la stringa. Togliere cioè tutti gli spazi, i commenti, e convertire tutte le lettere minuscole in maiscole. Ottenendo quindi una stringa ottimizzata (OPTIMIZED STRING). L'ottimizzazione è necessaria non solo perché le stringhe del data base (DB) sono espresse in questo formato per risparmiare spazio in memoria, ma anche per velocizzare le operazioni di elaborazione. Inoltre le lettere minuscole non fanno parte dell'alfabeto dello Z80 cosi come l'abbiamo definito, bisognerà quindi convertirle nel loro equivalente maiuscolo.
+Fino a questo punto il programma non sa ancora nulla sul contenuto della stringa, cioè se il suo contenuto è coerente con il linguaggio Assembly Z80. Per verificare ciò effettuiamo una serie di controlli di tipo lessicale-sintattico sull'istruzione.
+Successivamente la stringa viene divisa in parte statica e in parte dinamica. Il controllo lessicale viene eseguito cercando la parte statica dell'istruzione all'interno del DB. Se l'istruzione esiste si va a verificare la sintassi dell'istruzione in conformità con i dati memorizzati all'interno del DB.
+Se anche questo controllo risulta positivo si procede al'effettiva conversione (assemblaggio), le caratteristiche di quest'istruzione sono contenute nel RECORD del DB, e si utilizzeranno questi dati per produrre il codice oggetto. L'opcode del codice oggetto è contenuto nel DB mentre gli eventuali operandi verranno prelevati dalla stringa dinamica, il risulatato verrà memorizzato nella memoria di compilazione.
+

@@ -1,0 +1,104 @@
+Definizione di disassemblatore,
+
+Un disassemblatore è quel programma che permette di trasformare un file oggetto cioè una stringa binaria rappresentante un programma in LM in un file di testo che rappresenta l'equivalente programma in linguaggio assembly. Un disassemblatore non è altro che un caso particolare di decompilatore. Un decompilatore trasforma un file oggetto nell'equivalente file sorgente. In questo caso si tratta di un cross-decompiler; perché il codice prodotto è frutto di una compilazione realizzata su una diversa macchina, che utilizza un diverso microprocessore.
+Paradossalmente i decompilatori sono utilizzati, oltre nell'ambito del linguaggio assembly, solo per i linguaggio interpretati. Un file sorgente in un linguaggio interpretato viene compilato in modo da accelerare la sua esecuzione. I decompilatori per i linguaggio compilati non esistono. Infatti si tratterebbe di generare in funzione di un file eseguibile, il relativo sorgenti in linguaggio C o Turbo-Pascal. Naturalmente un tale compito risulta impossibile, anche perché genererebbe un sorgente di scarso utilizzo, e quindi di nessuna utilità.
+La differenza tra un disassemblatore e un decompilatore di linguaggio interpretato sta nella diversa potenza che le singole istruzioni dei due tipi di linguaggio possono esprimere.
+Un linguaggio interpretato può esprimere tramite le sue istruzioni delle operazioni molto complesse, mentre un'istruzione in linguaggio assembly può esprimere solo operazioni poco complesse.
+Quindi in linea di principio un disassemblatore risulta essere di più semplice realizzazione rispetto ad un decompilatore.
+
+Introduzione alla realizzazione del disassemblatore.
+
+L'utilità di un disassemblatore sta nel poter visualizzare una stringa di bytes di un programma in LM dello Z80, in un formato comprensibile all'uomo (o almeno per i programmatori): in linguaggio assembly.
+Volendo porre il problema di realizzare un disassemblatore sistemisticamente allora si tratterà di progettare un sistema che avendo in ingresso una stringa di bytes rappresentante un programma LM, dia in uscita l'equivalente decodifica come stringa alfanumerica in linguaggio assembly Z80.
+Come per l'assemblatore anche per il disassemblatore si tratta di effettuare un'operazione di conversione.
+In termini informatici si tratta di definire una base di dati (data base) contenente per ogni istruzione LM dello Z80 l'equivalente in assembly.
+
+Strutture dati per il disassemblatore.
+
+Se il data base (DB) per l'assemblatore aveva la struttura di un enorme matrice di 3 righe per 128 colonne, nel caso del disassemblatore si tratta di definire un vettore contenente in ogni elemento i dati di un'istruzione dello Z80.
+Per l'assemblatore si era scelto la forma di una matrice per meglio organizzare il DB, in modo che istruzioni con lo stesso numero di bytes di parte dinamica risiedessero nella stessa riga della matrice. E soprattutto per meglio strutturare la ricerca. Questo perché si trattava di effettuare un'interpetrazione di una istruzione espressa in formato alfanumerico codificandola in formato numerico. Si trattava quindi in un certo senso di una forma di IA (intelligenza artificiale) cioè di voler far comprendere alla macchina un linguaggio ad alto livello (o almeno ad un livello più alto di quello LM), e quindi il calcolatore doveva pur basarsi su metodi di ricerca più complessi.
+Il formato sorgente era un formato facilmente comprensibile dall'uomo ma un po' di meno dalla macchina. Il formato LM è molto più semplice da gestire por la macchina trovandosi di fronte già ad una serie di bytes. Si tratta quindi di cercare all'interno del DB una determinata stringa di bytes e stamparla con un diverso formato cioè effettuare quell'operazione che in linguaggio C viene chiamato output attraverso un formato. La struttura di questo formato con i relativi argomenti sono contenuti in un record del vettore del DB.
+In questo caso la ricerca risulta maggiormente ottimizzata si viene effettuata all'interno di un vettore.
+Ogni record del vettore contiene i seguenti dati:
+1) Stringa statica dell'istruzione.
+2) Opcodes.
+3) Posizione della stringa dinamica nell'istruzione.
+4) Numero di bytes per la parte dinamica.
+
+Diamo una motivazione a tali scelte.
+In primo luogo diamo la definizione di parte statica e dinamica. Esse assumono un diverso significato in funzione del fatto che si stia parlando di un'istruzione assembly o di un'istruzione in LM.
+Per un'istruzione espressa in linguaggio assembly, la parte statica corrisponde a quella parte alfanumerica dell'istruzione che permette di ricavare direttamente il codice operativo. La parte dinamica invece corrisponde a quella parte della stringa che permette di ricavare i bytes degli operandi dell'istruzione.
+Per un'istruzione espressa in linguaggio macchina, la parte statica corrisponde al codice operativo, mentre la parte dinamica ai bytes degli operandi dell'istruzione.
+Ogni record del DB contiene i dati per un'istruzione dello Z80. Questi dati non sono altro che gli opcodes, la stringa statica, ed altre informazioni che sono caratteristici di un'istruzione Z80. Questi dati andranno memorizzati all'interno del record. Ricordo che lo scopo dell'uso di un disassemblatore è quello di stampare una stringa: un'istruzione assembly dello Z80. Quest'istruzione sarà formata da una parte statica e una dinamica. La parte statica di questa istruzione assembly è un'informazione che bisognerà memorizzare all'interno di questo record, non essendo ricavabile direttamente dagli opcodes. La parte dinamica dell'istruzione assembly la ricaveremo direttamente dalla parte dinamica dall'istruzione LM. Il problema che ora sorge è dove stampare la parte dinamica?
+Chiariamo meglio questo problema tramite un esempio.
+Se dal disassemblaggio di un'istruzione abbiamo ricavato la stringa:
+"LDA,"
+e dall'elaborazione degli operandi dell'istruzione LM la seguenti stringa dinamica:
+"10"
+Come possiamo fondere le due stringhe in modo da ottenere l'istruzione esatta? Un metodo semplice prevederebbe di eseguire la somma di queste due stringhe in modo da ottenere la stringa:
+"LDA,10"
+E' chiaro però che tale procedimento non è generico. Infatti esistono istruzioni assembly (le istruzioni LM hanno la parte dinamica in coda agli opcodes) che hanno la parte dinamica al centro di quella statica (INn,(C)). Per questa ragione dovremo memorizzare la posizione della parte dinamica all'interno della stringa. C'è da notare però che esistono istruzioni che hanno due distinti argomenti di parte dinamica come:
+LD(IX+n), m
+in cui n ed m rappresentano due distinti bytes.
+Quindi dato che un'istruzione al massimo può avere due bytes di parte dinamica che possono esprimono al massimo due diversi argomenti allora sarà necessario conservare due diverse posizioni, una per il primo operando, e un'altra per il secondo. Naturalmente uno o entrambe queste informazioni possono assemere valore nullo per indicare che quell'istruzione ha un solo operando di parte dinamica o nessun operando.
+In definitiva abbiamo codificato tali informazioni all'interno di un record Pascal che ha la seguente forma:
+
+        IsrRec = Record
+                OpcStr : ISRSTR;
+                OpcNum : 1..3;
+                OpcDat : array[1..3] of byte;
+                DinPosA: 0..MAXSTR;
+                DinPosB: 0..MAXSTR;
+                DinNum : 0..2;
+        End;
+
+In cui rappresentano:
+-OpcStr: la stringa statica dell'istruzione assembly.
+-OpcNum: il numero di bytes di opcode dell'istruzione, e dato che un'istruzione al massimo può avere tre bytes di opcode, definiamo come da 1 3 il subrange di questa variabile.
+-OpcDat: il vettore contenente gli effettivi bytes d'opcode dell'istruzione. Naturalmente sono significativi solo i primi OpcNum bytes. -DinPosA: posizione all'interno della stringa statica del primo operando di parte dinamica, questo campo assume valore zero nel caso in cui l'istruzione non abbia parte dinamica.
+-DinPosB: posizione all'interno della stringa statica del secondo operando di parte dinamica, questo campo assume valore zero nel caso in cui l'istruzione non abbia un secondo operando di parte dinamica.
+-DinNum: numero di bytes di parte dinamica dell'istruzione. Dato che un'istruzione al massimo può avere due bytes di parte dinamica, allora definiremo questo campo come un subrange da 0 a 2. In cui zero indica la mancanza di parte dinamica. Se l'istruzione ha due byte di parte dinamica che rappresentano due operandi, allora questo è rilevato dal parametro DinPosB che sarà differente da zero.
+
+Abbiamo già parlato della struttura del DB per il disassemblatore, non resta ora che parlare della chiave usata per l'ordinamento del vettore e dell'algoritmo di ricerca.
+Abbiamo scelto come chiave per l'ordinameto il campo OpcDat. Infatti è chiaro che, prelevando l'istruzione LM dalla memoria, la prima informazione che potremo utilizzare sarà l'opcode. I record sono stati ordinati in modo che i codici d'opcode risultino cresenti. C'è da notare però che non tutte le istruzioni hanno lo stesso numero di bytes d'opcode. Quindi abbiamo riordinato il vettore del DB prima in funzione del primo byte d'opcode. Generando quindi delle sotto liste di elementi che avevano lo stesso primo byte d'opcode. Successivamente per le istruzioni aventi due bytes d'opcode, abbiamo proceduto a riordinare l'elenco anche in funzione del secondo byte. E la stessa operazione è stata effettuata per le istruzioni aventi tre bytes d'opcode. Ottenendo un elenco di facile consultazione.
+Abbiamo scelto come algoritmo di ricerca quello dicotonico sulla falsariga dell'assemblatore. L'algoritmo questa volta risulterà più complesso sia per l'ampiezza del vettore (infatti nell'ASM la ricerca veniva effettuata di volta in volta su una singola riga della matrice, e sarà chiaro che il vettore del DSM è molto più lungo per numero di elementi di qualsiasi riga della matrice dell'ASM) sia perché l'informazione da cercare (opcode) non è «sicura». Cioè non siamo sicuri che serva per intero.
+
+Nota sui Data bases.
+
+Come si è potuto notare che i campi del record OpcRec per l'ASM sono contenuti per intero nel record IsrRec del DSM. Quindi in linea di principio si potrebbe utilizzare lo stesso record per entrambi i programmi. Ma la base di dati per l'ASM e quella per il DSM sono strutturate differentemente. Infatti per il primo abbiamo una matrice e per il secondo abbiamo un vettore, che sono per di più ordinati con chiavi differenti. Il problema che ora sorge è di evitare di mantenere in memoria per due volte le stesse informazioni. Generando un problema di ridondanza. Per evitare ciò dovremo utilizzare la stessa base di dati. Solo che l'assemblatore utilizzerà parzialmente queste informazioni mentré il DSM utilizzerà tutte le informazioni. Si vuole inoltre che il metodo di accesso e quindi di ricerca a questa base di dati rimanga invariato per l'ASM e per il DSM. La soluzione è quella di utilizzare un indice. Che andrà a sostituire una delle due base di dati. Essa avrà la stessa struttura della base di dati che andrà a sostituire, ma ogni suo elemento invece di contenere i dati di un'istruzione conterrà l'indice del record cercato nell'altra base di dati.
+Ad esempio avendo la matrice dell'assemblatore possiamo fare in modo che i suoi elementi siano degli interi, che sono gli indici del record cercato nel vettore del DSM.
+Ed è proprio questo il metodo utilizzato.
+
+Algoritmo di ricerca per il disassemblatore.
+
+L'algoritmo di ricerca scelto per il DSM è di tipo dicotonico, ma viene implementato in un modo un po' singolare. Infatti l'informazione che viene passato all'algoritmo, può non venire utilizzata per intero.
+Mi spiego meglio. Il disassemblatore quando si trova di fronte ad una stringa di bytes, non sa nulla di questi. Quindi «fa» una serie di supposizioni. Una di queste si basa sul fatto che un'istruzione al massimo può essere composta da cinque bytes: tre per l'opcode e due per gli operandi. Quindi preleva dalla memoria i cinque bytes necesari all'elaborazione, di questi al massimo solo i primi tre bytes sono significativi per indicare all'interno del DB qual è l'istruzione LM. Questi tre bytes vengono passati all'algoritmo di ricerca. Anche l'algoritmo di ricerca si basa su un presupposto. Istruzioni aventi medesimi bytes come parte iniziali hanno stessa lunghezza. Ad esempio se un'istruzione ha come primo byte il valore $CB allora saremo sicuri che quella sarà un'istruzione lunga due bytes.
+Quindi l'algoritmo effettua una ricerca basandosi solo sul primo byte d'opcode dell'istruzione prelevata in memoria e naturalmente sul primo byte d'opcode contenuto all'interno di ogni RECORD del DB. Questa operazione è facilitata dal fatto che il vettore è riordinato con un algoritmo di priorità (gli elementi vengono riordinati in funzione del primo elemento poi del secondo, ed infine del terzo). Una volta trovato il record, non sappiamo se questo è quello realmente cercato. Infatti esistono istruzioni di più bytes d'opcode che ne hanno in comune il primo o i primi due.
+Basandosi su questo record possiamo sapere però di quanti bytes è formato l'opcode dell'istruzione attualmente elaborata. Se l'istruzione trovata ha più di un byte d'opcode allora continueremo nell'operazione di ricerca. Se all'inizio della ricerca il campo di ricerca era esteso su tutto il vettore, adesso questo sarà ristretto a tutte le istruzioni che hanno il medesimo numero di bytes d'opcode ed hanno in comune il primo byte. Quindi dovremo ricerca il nuovo limite superiore ed inferiore (indici del primo ed ultimo elemtno) delle istruzioni che possono essere quella cercata. Queste istruzioni devono avere lo stesso numero di bytes d'opcode della prima istruzione cercata, e devono avere lo stesso primo bytes d'opcode. Basandosi sul presupposto che istruzioni aventi lo stesso primo byte d'opcode hanno medesima lunghezza, allora sarà chiaro che queste istruzioni si troveranno una di seguito all'altra nel vettore. Ripetendo l'algoritmo di ricerca dicotonico sulla nuova lista così delineata dal limite inferiore e superiore. Se l'istruzione è tre bytes d'opcode allora si ripeterà l'operazione di ricerca così descritta per il terzo byte d'opcode. Alla fine otterremo la posizione del record dell'istruzione all'interno del vettore del DB.
+
+Analisi generale del disassemblatore.
+
+Nella realizzazione del disassemblatore ho seguito lo stesso metodo che utilizza il decoder dello Z80 quando si trova di fronte ad una serie di bytes. Ed ho trasportato quell'algoritmo (o per meglio dire l'algoritmo che immagino utilizzi) dalla sua implementazione hardware a quella software.
+Quindi il disassemblatore dovrà simulare in un certo senso il comportamento di una macchina a stati, cioè il decodificare dello Z80.
+
+Il decoder dello Z80 trovandosi infatti di fronte ad una serie di bytes segue tale procedimento:
+-Il primo bytes è un codice operativo, quindi procede ad esaminarlo
+-In funzione del primo byte vengono prelevati gli altri byte del codice operativo, questa serie d'informazioni vengono memorizzati in successione nel registro istruzione che è di 8-bit.
+Ogni byte d'opcode viene decodificato del decoder, e il controller sequencer attivà i vari elementi della CPU per prelevari altri bytes d'opcode o di dati o per eseguire l'istruzione.
+-I byte di dato vengono prelevati dalla memoria e memorizzati negli appositi registri interni dello Z80.
+
+Allo stesso modo il disassemblatore:
+-Preleva i byte d'opcode dalla memoria di compilazione.
+-Ricerca all'interno della matrice tali byte (corrisponde alla fase di decodifica dello Z80).
+-In funzione delle caratteristiche dell'istruzione memorizzate nel DB vengono prelevati altri bytes che sono gli operandi dell'istruzione Z80..
+-Visualizzazione dell'istruzione disassemblata.
+Le fasi del disassemblaggio verranno meglio analizzate nel successivo paragrafo.
+
+Disassemblaggio di una istruzione LM dello Z80
+
+Per spiegare il procedimento dell'algoritmo di disassemblaggio immaginiamo di voler disassemblare una determinata sequenza di bytes.
+Immaginiamo di trovarci nei panni del disassemblatore. Esso avendo in ingresso una stringa di bytes non sa nulla di questi. Potrebbero tanto rappresentare una istruzione dello Z80 tanto il numero di telefono del pizzaiuolo all'angolo. «Sa» però una cosa: il massimo numero di bytes per un'istruzione dello Z80 è cinque. Quindi per essere sicuro di prelevare tutta l'istruzione preleva dalla memoria i primi cinque bytes. Successivamente effettua la ricerca all'interno del vettore di questa stringa di bytes. L'algoritmo di ricerca già è stato spiegato approfonditamente, quindi non ci soffermeremo più a lungo.
+Se la ricerca avrà avuto buon esito sapremo la posizione del RECORD dell'istruzione all'interno del DB. Tramite quest'ultimo possiamo sapere in primo luogo l'esatto numero di bytes d'opcode. Quindi possiamo escludere  già una parte dei quei cinque bytes iniziali, sapendone il significato. Potremo poi sapere quanti sono i bytes della parte dinamica, escludendo eventualmente l'ultima parte di quei cinque bytes. Dopo aver riorganizzato i bytes in memoria conservando solo la parte utile, non resta che effettuare la stampa utilizzando la parte statica dell'istruzione assembly che è un'altra informazione che utilizzeremo dal record. Il problema che ora sorge è come gestire l'eventuale parte dinamica.
+Il caso più semplice è quello in cui si tratta di stampare un'istruzione non avente parte dinamica oppure avente uno o due bytes di parte dinamica in un solo operando. Nel primo caso non si dovrà computare nessun ulteriore dato. Nel secondo caso basterà trasformare la parte dinamica in una stringa che andrà inserita nella posizione indicata da DinPosA del RECORD. Se invece l'istruzione ha due operandi di parte dinamica allora dovremo inserire nella stringa prima la stringa del secondo operando e poi quella del primo operando nelle posizioni rispettivamente DinPosB e DinPosA. Questo perché i parametri DinPosX indicano la posizione riferendosi ad una stringa statica senza parte dinamica. Se questo poco cambia per il parametro DinPosA, al contrario può generare degli effetti non previsti ed antiestetici nell'inserimento del secondo parametro. Se si vorrebbe inserire prima la stringa corrispondente al parametro DinPosA e poi quella corrispondente al parametro DinPosB allora bisognerebbe considerare come è variata la stringa in funzione dell'inserimento del primo operando e di conseguenza variare il parametro DinPosB. Ma sarebbe un'inutile sforzo evitabile coll'artificio menzionato sopra.
+C'è da notare che il disassemblatore non stampa solo l'indirizzo così ottenuto ma la precedere dall'indirizzo di memoria in cui era situata l'istruzione, seguito dai bytes dell'istruzione LM tutto ciò espresso in esadecimale.
+

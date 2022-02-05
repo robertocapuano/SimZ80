@@ -1,0 +1,72 @@
+Gestione Casi speciali.
+Istruzioni:
+
+1) Categoria
+
+RL (IX+d)
+RLC  "
+SLA  "
+SRA  "
+SRL  "
+
+2) Categoria
+BIT b,(IX+ d)
+SET     "
+RES     "
+
+3) Categoria:
+BIT b,(HL)
+BIT b, r
+RES b,(HL)
+RES b, r
+SET b,(HL)
+SET b, r
+
+Per queste istruzioni bisogna aggiungere il campo Special al record IsrRec.
+IsrRec.Special := 0 nel caso in cui l'istruzione non sia speciale.
+                  1 nel caso in cui l'istruzione appartenga alla prima
+                    categoria.
+                  2 nel caso l'istruzione appartenga alla seconda
+                    categoria.
+                  3 nel caso l'istruzione appartenga alla terza categoria.
+
+Queste istruzioni sono speciali perché il terzo byte d'opcode non appare come terzo byte dell'istruzione ma come quarto. Nella prima categoria il terzo byte d'opcode rappresenta semplicemente il quarto byte dell'istruzione. Il terzo byte dell'istruzione rappresenta il byte di parte dinamica
+Nella seconda categoria tale byte deve subire una elaborazione. Infatti il primo byte della parte dinamica è il byte 3 dell'istruzione, il secondo byte di parte dinamica è infatti rappresenta i bits da 3-5 del terzo opcdode.
+Nella terza categoria bisogna eseguire le stesse operazioni della prima categoria eccetto che non bisogna aggiungere un byte di opcode.
+
+Risoluzione del problema.
+
+Strutture dati.
+Le istruzioni della prima categoria vengono classificate come istruzioni aventi un byte di parte dinamica, e due bytes di opcode.
+Le istruzioni della seconda categoria vengono classificate come istruzioni aventi due bytes di parte dinamica, e due bytes d'opcode.
+Le istruzioni della terza categoria vengono classificate come istruzioni aventi un bytes di parte dinamica e un byte d'opcode
+
+ASM.
+Per le istruzioni normali nulla cambia.
+Le istruzioni della prima categoria vengono classificate come istruzioni aventi un byte di parte dinamica e vengono memorizzate nella seconda riga della matrice.
+Le istruzioni della seconda categoria vengono classificate come istruzioni aventi due byte di parte dinamica e quindi vengono memorizzate nella terza riga della matrice.
+Le istruzioni della terza categoria vengono classificate come istruzioni aventi un byte di parte dinamica e quindi vengono memorizzate nella seconda riga della matrice.
+
+Algoritmo:
+1) Ottimizzazione della stringa.
+2) Ricerca all'interno della matrice.
+3) Memorizzazione dei normali opcode.
+4) Verifica il campo Special
+5) Se vale 0 viene gestita normalmente la parte dinamica.
+6) Se vale 1 allora significa che l'istruzione è stata trovata nella seconda riga. Il byte 1 della parte dinamica viene copiato come terzo byte dell'istruzione e viene aggiunta il terzo byte dell'opcode che è virtuale perché OpcNum vale 2. Si incrementa il puntatore alla memoria in modo da tenere conto del quarto byte.
+7) Se vale 2 allora significa che l'istruzione è stata trovata nella terza riga. Il byte 0 della parte dinamica viene copiato come terzo byte dell'istruzione, ed il byte 1 della parte dinamica viene copiato come quarto byte dell'istruzione. Il quarto byte subisce una ROL 3 e un'operazione d'OR con il terzo byte dell'opcode che è virtuale perché OpcNum vale 2. Si incrementa il puntatore alla memoria in modo da tenere conto del quarto byte.
+8) Se vale 3 allora significa che l'istruzione è stata trovata nella prima riga. Il byte 1 della parte dinamica viene copiato come terzo byte dell'istruzione. Il terzo byte subisce una ROL 3 e un'operazione d'OR con il secondo byte dell'opcode che è virtuale perché OpcNum vale 1.           Nella stampa gli ultimi bytes vengono stampati come bytes di parte dinamica.
+
+DSM
+Per le istruzioni normali nulla cambia.
+1) Prelevamento dei cinque bytes dalla memoria.
+2) Ricerca all'interno del vettore.
+2B) Se l'istruzione che trova ha campo special azzerato allora elabora normalemte.
+2C) Altrimenti inverte il terza e il quarto byte d'opcode e procede nella ricerca normalmente cercando tre bytes d'opcode.
+3) Il record di ritorno della routine di Ricerca viene verificato cioè si controlla il campo Special.
+4) Se vale 0 l'istruzione viene gestita normalmente.
+5) Se vale 1 allora l'istruzione ha un byte di parte dinamica che viene prelevato e gestito normalmente, alla fine si incrementa il puntatore alla memoria di uno in modo da saltare il quarto byte dell'istruzione che è il terzo opcode.
+6) Se vale 2 allora l'istruzione ha due bytes di parte dinamica che viene prelevata. Il byte 1 di parte dinamica subisce un'operazione di AND e di shift a destra. Alla fine la parte dinamica così elaborata viene gestita normalmente, alla fine si incrementa il puntatore alla memoria di uno in modo da saltare il quarto byte dell'istruzione che è il terzo opcode.
+7) Se vale 3 allora l'istruzione ha un bytes di parte dinamica che viene prelevata. Il byte 0 di parte dinamica subisce un'operazione di AND e di shift a desta. Alla fine la parte dinamica così elaborata viene gestita normalmente.
+
+Nelle operazioni di stampa, gli ultimi (uno o due a seconda dei casi)  bytes vengono stampati come bytes di parte dinamica.
