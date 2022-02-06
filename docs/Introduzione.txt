@@ -3,7 +3,7 @@
                  Assemblatore, disassemblatore di codice Z80.
 
                                     Di
-                              Capuano Roberto,
+                              Capuano Roberto
                             
 
                 Tesina di maturità per l'anno scolastico 1991/92.
